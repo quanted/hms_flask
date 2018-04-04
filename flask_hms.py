@@ -4,14 +4,13 @@ import os
 import logging
 
 # Import modules
-from modules.hms import ncdc_stations
-from modules.hms import percent_area
+from hms_flask.modules.hms import ncdc_stations
+from hms_flask.modules.hms import percent_area
 
 app = Flask(__name__)
 app.config.update(
     DEBUG=True
 )
-
 api = Api(app)
 
 PROJECT_ROOT = os.path.abspath(os.path.dirname(__file__))
