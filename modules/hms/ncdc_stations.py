@@ -19,12 +19,13 @@ class NCDCStations:
         else:
             geometry.crs = {'init': '+proj=longlat +datum=WGS84 +no_defs'}
             extent = geometry.total_bounds
-        stations = getStations(extent, startDate, endDate)
+
         try:
+            stations = getStations(extent, startDate, endDate)
             intersect_stations = stationsInGeometry(geojson['features'], stations)
-        except:
+            return json.dumps(intersect_stations)
+        except Exception as ex:
             return "{'station collection error': 'Error attempting to collect stations from NCDC.'}"
-        return json.dumps(intersect_stations)
 
 
 def isExtentValid(bounds):
