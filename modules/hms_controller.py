@@ -63,7 +63,7 @@ class HMSFlaskTest(Resource):
         posts = mongo_db.posts
         time_stamp = datetime.utcnow()
         data_value = {"request_time": str(time_stamp)}
-        data = {'_id': task_id, 'date': time_stamp, 'data': data_value}
+        data = {'_id': task_id, 'date': time_stamp, 'data': json.dumps(data_value)}
         posts.insert_one(data)
 
 
