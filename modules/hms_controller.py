@@ -42,7 +42,7 @@ class HMSTaskData(Resource):
             if task.status == "SUCCESS":
                 mongo_db = connect_to_mongoDB()
                 posts = mongo_db.posts
-                stations = json.loads(str(posts.find_one({'_id': task_id})['data']))
+                stations = json.loads(posts.find_one({'_id': task_id})['data'])
                 return Response(json.dumps({'id': task.id, 'status': task.status, 'data': stations}))
             else:
                 return Response(json.dumps({'id': task.id, 'status': task.status}))
@@ -62,7 +62,7 @@ class HMSFlaskTest(Resource):
         mongo_db = connect_to_mongoDB()
         posts = mongo_db.posts
         time_stamp = datetime.utcnow()
-        data = {'_id': task_id, 'date': time_stamp, 'data': {"request_time": time_stamp}}
+        data = {'_id': task_id, 'date': time_stamp, 'data': '{"request_time":' + 'time_stamp'}}
         posts.insert_one(data)
 
 
