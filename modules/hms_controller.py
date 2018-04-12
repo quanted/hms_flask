@@ -5,21 +5,23 @@ from datetime import datetime
 import logging
 import json
 
-from flask_qed.celery_cgi import celery
+from celery_cgi import celery
 
 # HMS Modules import
 from .hms.ncdc_stations import NCDCStations
 from .hms.percent_area import CatchmentGrid
 
-# Dev env mongoDB
-# mongo = pymongo.MongoClient(host='mongodb://localhost:27017/0')
-# Production env mongoDB
-mongo = pymongo.MongoClient(host='mongodb://mongodb:27017/0')
+def connect_to_mongoDB():
+    # Dev env mongoDB
+    # mongo = pymongo.MongoClient(host='mongodb://localhost:27017/0')
+    # Production env mongoDB
+    mongo = pymongo.MongoClient(host='mongodb://mongodb:27017/0')
 
-mongo_db = mongo['flask_hms']
-mongo.flask_hms.Collection.create_index([("date", pymongo.DESCENDING)], expireAfterSeconds=86400)
-# ALL entries into mongo.flask_hms must have datetime.utcnow() timestamp, which is used to delete the record after 86400
-# seconds, 24 hours.
+    mongo_db = mongo['flask_hms']
+    mongo.flask_hms.Collection.create_index([("date", pymongo.DESCENDING)], expireAfterSeconds=86400)
+    # ALL entries into mongo.flask_hms must have datetime.utcnow() timestamp, which is used to delete the record after 86400
+    # seconds, 24 hours.
+    return mongo_db
 
 parser = reqparse.RequestParser()
 
@@ -36,6 +38,7 @@ class HMSTaskData(Resource):
         if task_id is not None:
             task = celery.AsyncResult(task_id)
             if task.status == "SUCCESS":
+                mongo_db = connect_to_mongoDB()
                 posts = mongo_db.posts
                 stations = json.loads(posts.find_one({'_id': task_id})['data'])
                 return Response(json.dumps({'id': task.id, 'status': task.status, 'data': stations}))
@@ -70,6 +73,7 @@ class NCDCStationsInGeojson(Resource):
         stations = NCDCStations.findStationsInGeoJson(geojson, start_date, end_date, crs)
         logging.info("hms_controller.NCDCStationsInGeojson search completed.")
         logging.info("Adding data to mongoDB...")
+        mongo_db = connect_to_mongoDB()
         posts = mongo_db.posts
         time_stamp = datetime.utcnow()
         data = {'_id': task_id, 'date': time_stamp, 'data': stations}
@@ -102,6 +106,7 @@ class NLDASGridCells(Resource):
             catchment_cells = {}
         logging.info("hms_controller.NLDASGridCells calcuation completed.")
         logging.info("Adding data to mongoDB...")
+        mongo_db = connect_to_mongoDB()
         posts = mongo_db.posts
         time_stamp = datetime.utcnow()
         data = {'_id': task_id, 'date': time_stamp, 'data': catchment_cells}
