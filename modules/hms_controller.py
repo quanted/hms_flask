@@ -42,7 +42,7 @@ class HMSTaskData(Resource):
             if task.status == "SUCCESS":
                 mongo_db = connect_to_mongoDB()
                 posts = mongo_db.posts
-                stations = json.loads(posts.find_one({'_id': task_id})['data'])
+                stations = json.loads(str(posts.find_one({'_id': task_id})['data']))
                 return Response(json.dumps({'id': task.id, 'status': task.status, 'data': stations}))
             else:
                 return Response(json.dumps({'id': task.id, 'status': task.status}))
