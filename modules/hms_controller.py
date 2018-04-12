@@ -11,6 +11,7 @@ from celery_cgi import celery
 from .hms.ncdc_stations import NCDCStations
 from .hms.percent_area import CatchmentGrid
 
+
 def connect_to_mongoDB():
     # Dev env mongoDB
     # mongo = pymongo.MongoClient(host='mongodb://localhost:27017/0')
@@ -22,6 +23,7 @@ def connect_to_mongoDB():
     # ALL entries into mongo.flask_hms must have datetime.utcnow() timestamp, which is used to delete the record after 86400
     # seconds, 24 hours.
     return mongo_db
+
 
 parser = reqparse.RequestParser()
 
@@ -46,6 +48,22 @@ class HMSTaskData(Resource):
                 return Response(json.dumps({'id': task.id, 'status': task.status}))
         else:
             return Response(json.dumps({'error': 'id provided is invalid.'}))
+
+
+class HMSFlaskTest(Resource):
+
+    def get(self):
+        test_id = self.run_test.apply_async(queue="qed")
+        return Response(json.dumps({'job_id': test_id.id}))
+
+    @celery.task(name="hms_flask_test", bind=True, ignore_result=False)
+    def run_test(self):
+        task_id = celery.current_task.request.id
+        mongo_db = connect_to_mongoDB()
+        posts = mongo_db.posts
+        time_stamp = datetime.utcnow()
+        data = {'_id': task_id, 'date': time_stamp, 'data': {"request_time": time_stamp}}
+        posts.insert_one(data)
 
 
 class NCDCStationsInGeojson(Resource):

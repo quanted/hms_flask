@@ -28,7 +28,7 @@ class StatusTest(Resource):
 base_url = "https://localhost:7777/hms"
 logging.info(" flask_hms started: live endpoints")
 logging.info(base_url + "/gis")
-api.add_resource(StatusTest, '/gis/test/')
+api.add_resource(hms_controller.HMSTaskData, '/gis/test/')
 
 # HMS endpoints
 # Data retrieval endpoint
