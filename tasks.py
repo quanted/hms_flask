@@ -60,11 +60,11 @@ class SamStatus(Resource):
         :param jobId:
         :return:
         """
-        logging.info("SAM task status request received for task: {}".format(str(task_id)))
+        # logging.info("SAM task status request received for task: {}".format(str(task_id)))
         task = {}
         try:
             task = sam_status(task_id)
-            logging.info("SAM task id: " + task_id + " status: " + task['status'])
+            # logging.info("SAM task id: " + task_id + " status: " + task['status'])
         except Exception as ex:
             task['status'] = str(ex)
             logging.info("SAM task status request error: " + str(ex))
