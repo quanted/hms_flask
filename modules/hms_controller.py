@@ -4,6 +4,7 @@ import pymongo as pymongo
 from datetime import datetime
 import logging
 import json
+import os
 
 from celery_cgi import celery
 
@@ -11,12 +12,16 @@ from celery_cgi import celery
 from .hms.ncdc_stations import NCDCStations
 from .hms.percent_area import CatchmentGrid
 
+IN_DOCKER = False
+
 
 def connect_to_mongoDB():
-    # Dev env mongoDB
-    # mongo = pymongo.MongoClient(host='mongodb://localhost:27017/0')
-    # Production env mongoDB
-    mongo = pymongo.MongoClient(host='mongodb://mongodb:27017/0')
+    if IN_DOCKER is False:
+        # Dev env mongoDB
+        mongo = pymongo.MongoClient(host='mongodb://localhost:27017/0')
+    else:
+        # Production env mongoDB
+        mongo = pymongo.MongoClient(host='mongodb://mongodb:27017/0')
 
     mongo_db = mongo['flask_hms']
     mongo.flask_hms.Collection.create_index([("date", pymongo.DESCENDING)], expireAfterSeconds=86400)
