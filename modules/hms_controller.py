@@ -12,7 +12,7 @@ from celery_cgi import celery
 from .hms.ncdc_stations import NCDCStations
 from .hms.percent_area import CatchmentGrid
 
-IN_DOCKER = False
+IN_DOCKER = True
 
 
 def connect_to_mongoDB():
