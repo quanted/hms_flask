@@ -12,17 +12,16 @@ from celery_cgi import celery
 from .hms.ncdc_stations import NCDCStations
 from .hms.percent_area import CatchmentGrid
 
-IN_DOCKER = True
+IN_DOCKER = os.environ.get("IN_DOCKER")
 
 
 def connect_to_mongoDB():
-    if IN_DOCKER is False:
+    if IN_DOCKER == "False":
         # Dev env mongoDB
         mongo = pymongo.MongoClient(host='mongodb://localhost:27017/0')
     else:
         # Production env mongoDB
         mongo = pymongo.MongoClient(host='mongodb://mongodb:27017/0')
-
     mongo_db = mongo['flask_hms']
     mongo.flask_hms.Collection.create_index([("date", pymongo.DESCENDING)], expireAfterSeconds=86400)
     # ALL entries into mongo.flask_hms must have datetime.utcnow() timestamp, which is used to delete the record after 86400
@@ -30,17 +29,18 @@ def connect_to_mongoDB():
     return mongo_db
 
 
-parser = reqparse.RequestParser()
+parser_base = reqparse.RequestParser()
 
 
 class HMSTaskData(Resource):
     """
     Controller class to retrieve data from the mongoDB database and/or checking status of a task
     """
+    parser = parser_base.copy()
     parser.add_argument('job_id')
 
     def get(self):
-        args = parser.parse_args()
+        args = self.parser.parse_args()
         task_id = args.job_id
         if task_id is not None:
             task = celery.AsyncResult(task_id)
@@ -76,13 +76,14 @@ class NCDCStationsInGeojson(Resource):
     """
     Controller class for getting all ncdc stations within a provided geometry, as geojson, and a date range.
     """
+    parser = parser_base.copy()
     parser.add_argument('geometry')
     parser.add_argument('startDate')
     parser.add_argument('endDate')
     parser.add_argument('crs')
 
     def post(self):
-        args = parser.parse_args()
+        args = self.parser.parse_args()
         if args.startDate is None or args.endDate is None:
             return Response("{'input error':'Arguments startDate and endDate are required.")
         geojson = json.loads(args.geometry)
@@ -108,12 +109,13 @@ class NLDASGridCells(Resource):
     """
 
     """
+    parser = parser_base.copy()
     parser.add_argument('huc_8_num')
     parser.add_argument('huc_12_num')
     parser.add_argument('com_id_num')
 
     def get(self):
-        args = parser.parse_args()
+        args = self.parser.parse_args()
         task_id = self.start_async.apply_async(args=(args.huc_8_num, args.huc_12_num, args.com_id_num), queue="qed")
         return Response(json.dumps({'job_id': task_id.id}))
 
