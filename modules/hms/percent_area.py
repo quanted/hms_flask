@@ -12,6 +12,7 @@ import json
 import time
 import io
 import re
+import os
 
 # parser = reqparse.RequestParser()
 # parser.add_argument('huc_8_num')
@@ -104,13 +105,12 @@ class CatchmentPoint():
 
 
 def process_huc_8(huc_8_num, com_id_num):
-    url = 'ftp://newftp.epa.gov/exposure/BasinsData/NHDPlus21/NHDPlus' + str(huc_8_num) + '.zip'
-    req = urllib.request.urlopen(url)
-    shzip = ZipFile(io.BytesIO(req.read()))
+    zip_path = os.getcwd() + "/hms_flask/data/qed-basins/NHDPlus" + str(huc_8_num) + ".zip"
+    shzip = ZipFile(zip_path)
     mshp = shzip.open('NHDPlus' + str(huc_8_num) + '/Drainage/Catchment.shp')
     mdbf = shzip.open('NHDPlus' + str(huc_8_num) + '/Drainage/Catchment.dbf')
     sfile = shp_to_geojson(mshp, mdbf)
-    result_table = readGeometry(sfile, url, com_id_num)
+    result_table = readGeometry(sfile, "", com_id_num)
     return result_table
 
 
