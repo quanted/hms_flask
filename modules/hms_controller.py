@@ -139,19 +139,19 @@ class NLDASGridCells(Resource):
         posts.insert_one(data)
 
 
-class Hydrodynamics(Resource):
-    """
-
-    """
-    parser = parser_base.copy()
-    parser.add_argument('start_date')
-    parser.add_argument('end_date')
-    parser.add_argument('delta_t')
-    parser.add_argument('volume')
-    parser.add_argument('boundary_flow')
-
-    def constant_volume(self):
-        args = self.parser.parse_args()
-        # DO STUFF with args, validation
-        # Point to hydrodynamics constant_volume, add integration of celery and mongoDB
-        # return task_id
+# class Hydrodynamics(Resource):
+#     """
+#
+#     """
+#     parser = parser_base.copy()
+#     parser.add_argument('start_date')
+#     parser.add_argument('end_date')
+#     parser.add_argument('delta_t')
+#     parser.add_argument('volume')
+#     parser.add_argument('boundary_flow')
+#
+#     def constant_volume(self):
+#         args = self.parser.parse_args()
+#         # DO STUFF with args, validation
+#         # Point to hydrodynamics constant_volume, add integration of celery and mongoDB
+#         # return task_id
