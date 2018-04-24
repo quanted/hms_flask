@@ -18,9 +18,11 @@ IN_DOCKER = os.environ.get("IN_DOCKER")
 def connect_to_mongoDB():
     if IN_DOCKER == "False":
         # Dev env mongoDB
+        logging.info("Connecting to mongoDB at: mongodb://localhost:27017/0")
         mongo = pymongo.MongoClient(host='mongodb://localhost:27017/0')
     else:
         # Production env mongoDB
+        logging.info("Connecting to mongoDB at: mongodb://mongodb:27017/0")
         mongo = pymongo.MongoClient(host='mongodb://mongodb:27017/0')
     mongo_db = mongo['flask_hms']
     mongo.flask_hms.Collection.create_index([("date", pymongo.DESCENDING)], expireAfterSeconds=86400)
