@@ -184,11 +184,11 @@ def readGeometry(sfile, url, com):
         colNames.append(colLayer.GetFieldDefn(i).GetName())
     coms, huc8s, huc12s = [], [], []
     overlap, polygons = [], []
-    if ('COMID' in colNames):
+    if 'COMID' in colNames:
         huc12s = [None] * len(shapeLayer)  # No huc 12s
         for feature in shapeLayer:
-            if (com):
-                if (feature.GetField('COMID') == int(com)):  # Only focusing on the given catchment argument
+            if com:
+                if feature.GetField('COMID') == int(com):  # Only focusing on the given catchment argument
                     polygons.append(feature)
                     coms.append(feature.GetField('COMID'))
                     huc8s.append(feature.GetField('HUC8'))
@@ -197,7 +197,7 @@ def readGeometry(sfile, url, com):
                 polygons.append(feature)
                 coms.append(feature.GetField('COMID'))
                 huc8s.append(feature.GetField('HUC8'))
-    elif ('HUC_8' in colNames):
+    elif 'HUC_8' in colNames:
         coms = [None] * len(shapeLayer)  # No catchments
         for feature in shapeLayer:
             polygons.append(feature)
@@ -205,7 +205,7 @@ def readGeometry(sfile, url, com):
             huc12s.append(feature.GetField('HUC_12'))
     else:
         coms = [None] * len(shapeLayer)
-        if (com):
+        if com:
             coms[0] = com
         huc8s = [None] * len(shapeLayer)
         huc12s = [None] * len(shapeLayer)
@@ -219,13 +219,13 @@ def readGeometry(sfile, url, com):
         poly.Transform(coordTrans)
         totalPoly.AddGeometry(poly)
     totalPoly = totalPoly.UnionCascaded()
-    if (totalPoly == None):
+    if totalPoly == None:
         totalPoly = polygons[0].GetGeometryRef()  # latLong
     # Calculate cells that contain polygons ahead of time to make intersections faster
     # This block of code should be parallelized if possible
     for feature in nldasLayer:
         cell = feature.GetGeometryRef()
-        if (totalPoly.Intersects(cell) and feature not in overlap):
+        if totalPoly.Intersects(cell) and feature not in overlap:
             overlap.append(feature)
     return calculations(overlap, polygons, coms, huc8s, huc12s, metadataList)
 
@@ -235,7 +235,7 @@ def calculations(overlap, polygons, coms, huc8s, huc12s, metadataList):
     # table.geometry = {"HUC 8 ID": huc8s[0]}
     # huc8table = [{"HUC 8 ID": huc8s[0]}]
     table = GeometryTable()
-    i = 0;
+    i = 0
     num_points = 0
     for polygon in polygons:
         poly = polygon.GetGeometryRef()
@@ -246,7 +246,7 @@ def calculations(overlap, polygons, coms, huc8s, huc12s, metadataList):
             cell = feature.GetGeometryRef()
             interArea = 0
             squareArea = cell.Area()
-            if (poly.Intersects(cell)):
+            if poly.Intersects(cell):
                 inter = poly.Intersection(cell)
                 interArea += inter.Area()
                 percentArea = (interArea / squareArea) * 100

@@ -61,7 +61,7 @@ class HMSFlaskTest(Resource):
         test_id = self.run_test.apply_async(queue="qed")
         return Response(json.dumps({'job_id': test_id.id}))
 
-    @celery.task(name="hms_flask_test", bind=True, ignore_result=False)
+    @celery.task(name="hms_flask_test", bind=True)
     def run_test(self):
         task_id = celery.current_task.request.id
         mongo_db = connect_to_mongoDB()
@@ -90,7 +90,7 @@ class NCDCStationsInGeojson(Resource):
         job_id = self.start_async.apply_async(args=(geojson, args.startDate, args.endDate, args.crs), queue="qed")
         return Response(json.dumps({'job_id': job_id.id}))
 
-    @celery.task(name='hms_ncdc_stations', bind=True, ignore_result=False)
+    @celery.task(name='hms_ncdc_stations', bind=True)
     def start_async(self, geojson, start_date, end_date, crs):
         task_id = celery.current_task.request.id
         logging.info("task_id: {}".format(task_id))
@@ -116,10 +116,11 @@ class NLDASGridCells(Resource):
 
     def get(self):
         args = self.parser.parse_args()
-        task_id = self.start_async.apply_async(args=(args.huc_8_num, args.huc_12_num, args.com_id_num), queue="qed")
+        # task_id = self.start_async.apply_async(args=(args.huc_8_num, args.huc_12_num, args.com_id_num), queue="qed")
+        task_id = self.start_async(args.huc_8_num, args.huc_12_num, args.com_id_num)
         return Response(json.dumps({'job_id': task_id.id}))
 
-    @celery.task(name='hms_nldas_grid', bind=True, ignore_result=False)
+    @celery.task(name='hms_nldas_grid', bind=True)
     def start_async(self, huc_8_id, huc_12_id, com_id):
         task_id = celery.current_task.request.id
         logging.info("task_id: {}".format(task_id))
