@@ -11,6 +11,7 @@ from celery_cgi import celery
 # HMS Modules import
 from .hms.ncdc_stations import NCDCStations
 from .hms.percent_area import CatchmentGrid
+from .hms.hydrodynamics import ConstantVolume
 
 IN_DOCKER = os.environ.get("IN_DOCKER")
 
@@ -142,33 +143,37 @@ class NLDASGridCells(Resource):
         posts.insert_one(data)
 
 
-# class Hydrodynamics(Resource):
-#     """
-#
-#     """
-#     parser = parser_base.copy()
-#     parser.add_argument('start_date')
-#     parser.add_argument('end_date')
-#     parser.add_argument('timestep')
-#     parser.add_argument('volume')
-#     parser.add_argument('boundary_flow')
-#
-#     def constant_volume(self):
-#         args = self.parser.parse_args()
-#          if args.startDate is None or args.endDate is None:
-#                 return Response("{'input error':'Arguments startDate and endDate are required.")
-#         # Point to hydrodynamics constant_volume, add integration of celery and mongoDB
-#          job_id = self.start_async.apply_async(args=(args.startDate, args.endDate, args.timestep, args.segments, args.boundary_flow), queue="qed") # DO STUFF with args, validation
-#          return Response(json.dumps({'job_id': job_id.id})) # return task_id
+class Hydrodynamics(Resource):
+    """
 
-#    @celery.task(name='hms_constant_volume', bind=True)
-#    def start_async(self, startDate, endDate, timestep, segments, boundary_flow):
-#        task_id = celery.current_task.request.id
-#        logging.info("task_id: {}".format(task_id))
-#        logging.info("hms_controller.Hydrodynamics starting search...")
-#        logging.info("Adding data to mongoDB...")
-#        mongo_db = connect_to_mongoDB()
-#        posts = mongo_db.posts
-#        time_stamp = datetime.utcnow()
-#        data = {'_id': task_id, 'date': time_stamp}
-#        posts.insert_one(data)
+    """
+    parser = parser_base.copy()
+    parser.add_argument('start_date')
+    parser.add_argument('end_date')
+    parser.add_argument('timestep')
+    parser.add_argument('volume')
+    parser.add_argument('boundary_flow')
+
+    def constant_volume(self):
+        args = self.parser.parse_args()
+        # arg to point to specific algorithm
+        #alg = 'constantVolume' add to 164 & 168
+         if args.startDate is None or args.endDate is None:
+                return Response("{'input error':'Arguments startDate and endDate are required.")
+        # Point to hydrodynamics constant_volume, add integration of celery and mongoDB
+         job_id = self.start_async.apply_async(args=(args.startDate, args.endDate, args.timestep, args.boundary_flow, args.segments), queue="qed") # DO STUFF with args, validation
+         return Response(json.dumps({'job_id': job_id.id})) # return task_id
+
+   @celery.task(name='hms_constant_volume', bind=True)
+   def start_async(self, startDate, endDate, timestep, boundary_flow, segments):
+       task_id = celery.current_task.request.id
+       logging.info("task_id: {}".format(task_id))
+       logging.info("hms_controller.Hydrodynamics starting model...")
+       cv = ConstantVolume(startDate, endDate, timestep, boundary_flow, segments)
+       result = cv.constantVolume() # one for each alg
+       logging.info("Adding data to mongoDB...")
+       mongo_db = connect_to_mongoDB()
+       posts = mongo_db.posts
+       time_stamp = datetime.utcnow()
+       data = {'_id': task_id, 'date': time_stamp, 'data': result}
+       posts.insert_one(data)
