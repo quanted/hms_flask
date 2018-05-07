@@ -158,11 +158,11 @@ class Hydrodynamics(Resource):
         args = self.parser.parse_args()
         # arg to point to specific algorithm
         #alg = 'constantVolume' add to 164 & 168
-         if args.startDate is None or args.endDate is None:
+        if args.startDate is None or args.endDate is None:
                 return Response("{'input error':'Arguments startDate and endDate are required.")
         # Point to hydrodynamics constant_volume, add integration of celery and mongoDB
-         job_id = self.start_async.apply_async(args=(args.startDate, args.endDate, args.timestep, args.boundary_flow, args.segments), queue="qed") # DO STUFF with args, validation
-         return Response(json.dumps({'job_id': job_id.id})) # return task_id
+        job_id = self.start_async.apply_async(args=(args.startDate, args.endDate, args.timestep, args.boundary_flow, args.segments), queue="qed") # DO STUFF with args, validation
+        return Response(json.dumps({'job_id': job_id.id})) # return task_id
 
    @celery.task(name='hms_constant_volume', bind=True)
    def start_async(self, startDate, endDate, timestep, boundary_flow, segments):
