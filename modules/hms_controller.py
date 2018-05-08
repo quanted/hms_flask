@@ -10,7 +10,7 @@ from celery_cgi import celery
 
 # HMS Modules import
 from .hms.ncdc_stations import NCDCStations
-from .hms.percent_area import CatchmentGrid
+# from .hms.percent_area import CatchmentGrid
 from .hms.hydrodynamics import ConstantVolume
 
 IN_DOCKER = os.environ.get("IN_DOCKER")
@@ -129,9 +129,11 @@ class NLDASGridCells(Resource):
         logging.info("task_id: {}".format(task_id))
         logging.info("hms_controller.NLDASGridCells starting calculation...")
         if huc_8_id and com_id:
-            catchment_cells = CatchmentGrid.getIntersectCellsInCatchment(huc_8_id, com_id)
+            catchment_cells = {}
+            # catchment_cells = CatchmentGrid.getIntersectCellsInCatchment(huc_8_id, com_id)
         elif huc_12_id:
-            catchment_cells = CatchmentGrid.getIntersectCellsInHuc12(huc_12_id)
+            catchment_cells = {}
+            # catchment_cells = CatchmentGrid.getIntersectCellsInHuc12(huc_12_id)
         else:
             catchment_cells = {}
         logging.info("hms_controller.NLDASGridCells calcuation completed.")
