@@ -128,10 +128,11 @@ class NLDASGridCells(Resource):
         task_id = celery.current_task.request.id
         logging.info("task_id: {}".format(task_id))
         logging.info("hms_controller.NLDASGridCells starting calculation...")
-        catchment_cells = {}
         if huc_8_id and com_id:
+            catchment_cells = {}
             # catchment_cells = CatchmentGrid.getIntersectCellsInCatchment(huc_8_id, com_id)
         elif huc_12_id:
+            catchment_cells = {}
             # catchment_cells = CatchmentGrid.getIntersectCellsInHuc12(huc_12_id)
         else:
             catchment_cells = {}
