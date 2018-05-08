@@ -119,8 +119,8 @@ class NLDASGridCells(Resource):
 
     def get(self):
         args = self.parser.parse_args()
-        # task_id = self.start_async.apply_async(args=(args.huc_8_num, args.huc_12_num, args.com_id_num), queue="qed")
-        task_id = self.start_async(args.huc_8_num, args.huc_12_num, args.com_id_num)
+        task_id = self.start_async.apply_async(args=(args.huc_8_num, args.huc_12_num, args.com_id_num), queue="qed")
+        #task_id = self.start_async(args.huc_8_num, args.huc_12_num, args.com_id_num)
         return Response(json.dumps({'job_id': task_id.id}))
 
     @celery.task(name='hms_nldas_grid', bind=True)
