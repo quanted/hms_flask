@@ -11,7 +11,7 @@ from celery_cgi import celery
 # HMS Modules import
 from .hms.ncdc_stations import NCDCStations
 from .hms.percent_area import CatchmentGrid
-from .hms.hydrodynamics import ConstantVolume
+from .hms.hydrodynamics import FlowRouting
 
 IN_DOCKER = os.environ.get("IN_DOCKER")
 
@@ -147,33 +147,48 @@ class Hydrodynamics(Resource):
     """
 
     """
+
     parser = parser_base.copy()
-    parser.add_argument('start_date')
-    parser.add_argument('end_date')
+    parser.add_argument('model')  # add to django request
+    parser.add_argument('startDate')
+    parser.add_argument('endDate')
     parser.add_argument('timestep')
-    parser.add_argument('volume')
+    parser.add_argument('segments')
     parser.add_argument('boundary_flow')
 
-    def constant_volume(self):
+    def post(self):
+        use_celery = False
         args = self.parser.parse_args()
-        # arg to point to specific algorithm
-        #alg = 'constantVolume' add to 164 & 168
-         if args.startDate is None or args.endDate is None:
-                return Response("{'input error':'Arguments startDate and endDate are required.")
-        # Point to hydrodynamics constant_volume, add integration of celery and mongoDB
-         job_id = self.start_async.apply_async(args=(args.startDate, args.endDate, args.timestep, args.boundary_flow, args.segments), queue="qed") # DO STUFF with args, validation
-         return Response(json.dumps({'job_id': job_id.id})) # return task_id
+        if args.startDate is None or args.endDate is None:
+            return Response("{'input error':'Arguments startDate and endDate are required.")
+        if use_celery:
+            if args.model is 'constantVolume':
+                job_id = self.CV_start_async.apply_async(
+                    args=(args.startDate, args.endDate, args.timestep, args.boundary_flow, args.segments),
+                    queue="qed")  # DO STUFF with args, validation
+                return Response(json.dumps({'job_id': job_id.id}))  # return task_id
+        else:
+            data = FlowRouting(startDate=args.startDate, endDate=args.endDate, timestep=args.timestep,
+                               boundary_flow=args.boundary_flow, segments=args.segments)
+            if args.model is 'constantVolume':
+                result = data.constantVolume()
+            elif args.model is 'changingVolume':
+                result = data.changingVolume()
+            else:
+                return Response(
+                    "{'input error':'invalid model type. Must be constantVolume, changingVolume, or kinematicWave.'}")
+            return Response(json.dumps({'data': result}))  # return task_id
 
-   @celery.task(name='hms_constant_volume', bind=True)
-   def start_async(self, startDate, endDate, timestep, boundary_flow, segments):
-       task_id = celery.current_task.request.id
-       logging.info("task_id: {}".format(task_id))
-       logging.info("hms_controller.Hydrodynamics starting model...")
-       cv = ConstantVolume(startDate, endDate, timestep, boundary_flow, segments)
-       result = cv.constantVolume() # one for each alg
-       logging.info("Adding data to mongoDB...")
-       mongo_db = connect_to_mongoDB()
-       posts = mongo_db.posts
-       time_stamp = datetime.utcnow()
-       data = {'_id': task_id, 'date': time_stamp, 'data': result}
-       posts.insert_one(data)
+        @celery.task(name='hms_constant_volume', bind=True)
+        def CV_start_async(self, startDate, endDate, timestep, boundary_flow, segments):
+            task_id = celery.current_task.request.id
+            logging.info("task_id: {}".format(task_id))
+            logging.info("hms_controller.Hydrodynamics starting model...")
+            cv = FlowRouting(startDate, endDate, timestep, boundary_flow, segments)
+            result = cv.constantVolume()  # one for each alg
+            logging.info("Adding data to mongoDB...")
+            mongo_db = connect_to_mongoDB()
+            posts = mongo_db.posts
+            time_stamp = datetime.utcnow()
+            data = {'_id': task_id, 'date': time_stamp, 'data': result}
+            posts.insert_one(data)

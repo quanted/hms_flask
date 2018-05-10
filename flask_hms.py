@@ -37,8 +37,8 @@ logging.info(base_url + "/gis/ncdc/stations/")
 api.add_resource(hms_controller.NCDCStationsInGeojson, '/gis/ncdc/stations/')
 logging.info(base_url + "/gis/percentage/")
 api.add_resource(hms_controller.NLDASGridCells, '/gis/percentage/')
-logging.info(base_url + "/hydrodynamics/constant_volume/")
-api.add_resource(hms_controller.Hydrodynamics.contant_volume, '/hydrodynamics/constant_volume/')
+logging.info(base_url + "/hydrodynamic/constant_volume/")
+api.add_resource(hms_controller.Hydrodynamics, '/hydrodynamic/constant_volume/')
 
 if __name__ == '__main__':
     app.run(port=7777, debug=True)
