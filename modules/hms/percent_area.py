@@ -1,7 +1,8 @@
 # from flask import Response, Flask, request, jsonify
 # from flask_restful import Resource, reqparse, abort
 # from werkzeug.datastructures import FileStorage
-from osgeo import ogr, osr
+from osgeo import ogr
+from osgeo import osr
 import urllib.request
 from zipfile import *
 import shapefile
