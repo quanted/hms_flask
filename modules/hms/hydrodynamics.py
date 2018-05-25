@@ -21,7 +21,7 @@ class FlowRouting:
         self.boundary_flow = float(boundary_flow)
         self.segments = int(float(segments))
 
-    def constantVolume(self):
+    def constant_volume(self):
         time_s = pd.to_datetime([dt.strftime('%Y-%m-%d %H:%M') for dt in
                                  datetime_range(datetime.strptime(self.startDate, '%Y-%m-%d'),
                                                 datetime.strptime(self.endDate, '%Y-%m-%d'),
@@ -37,7 +37,7 @@ class FlowRouting:
         #print(Q_out.to_json(orient="split"))
         return Q_out.to_json(orient="split") #print df.reset_index().to_json(orient='records')
 
-    # def changingVolume(self):
+    # def changing_volume(self):
     #     time_s = pd.to_datetime([dt.strftime('%Y-%m-%d %H:%M') for dt in
     #                              datetime_range(datetime.strptime(self.startDate, '%Y-%m-%d'),
     #                                             datetime.strptime(self.endDate, '%Y-%m-%d'),
@@ -63,7 +63,7 @@ class FlowRouting:
     #       perim=2 *d*(1 + z_slope**2)**0.5
     #   return perim  
     
-    # def kinematicwave(self):
+    # def kinematic_wave(self):
     #     time_s = pd.to_datetime([dt.strftime('%Y-%m-%d %H:%M') for dt in
     #                              datetime_range(datetime.strptime(self.startDate, '%Y-%m-%d'),
     #                                             datetime.strptime(self.endDate, '%Y-%m-%d'),
