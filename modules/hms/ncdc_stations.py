@@ -1,50 +1,31 @@
-from flask import Response
-from flask_restful import Resource, reqparse
 from shapely.geometry import Point, shape
 from fiona.crs import from_epsg
 import geopandas as geo
+import logging
 import json
 import requests
 
-parser = reqparse.RequestParser()
-parser.add_argument('geometry')
-parser.add_argument('startDate')
-parser.add_argument('endDate')
-parser.add_argument('crs')
 
-
-class HMSNcdcStations(Resource):
-    """
-    Function for retrieving ncdc stations within a provided geometry, as a geojson.
-    Requires crs argument
-    """
-    def post(self):
-        args = parser.parse_args()
-        if args.startDate is None or args.endDate is None:
-            return Response("{'input error':'Arguments startDate and endDate are required.")
-        geojson = json.loads(args.geometry)
+class NCDCStations:
+    @staticmethod
+    def findStationsInGeoJson(geojson, startDate=None, endDate=None, crs=None):
+        logging.info("HMS Celery task: searching for NCDC Stations with geojson bounds. process starting...")
         geometry = geo.GeoDataFrame.from_features(geojson)
-        if args.crs is not None and args.crs is not "4326":
-            try:
-                geometry.crs = from_epsg(args.crs)
-            except:
-                return Response("{'crs error': 'Invalid crs provided'}")
+        if crs is not None and crs is not "4326":
+            geometry.crs = from_epsg(crs)
             geometry = geometry.to_crs({'init': 'epsg:326'})
             geojson = json.loads(geometry.to_json())
             extent = geometry.total_bounds
         else:
-            # if crs is blank or null, assumption is that it is 4326
             geometry.crs = {'init': '+proj=longlat +datum=WGS84 +no_defs'}
             extent = geometry.total_bounds
-        if not isExtentValid(extent):
-            return Response("{'reprojection error': 'Bounds of reprojection are not valid latitude/longitude values, please provide valid crs code.'}")
-        stations = getStations(extent, args.startDate, args.endDate)
+
         try:
+            stations = getStations(extent, startDate, endDate)
             intersect_stations = stationsInGeometry(geojson['features'], stations)
-        except:
-            return Response("{'station collection error': 'Error attempting to collect stations from NCDC.'}")
-        response = Response(json.dumps(intersect_stations))
-        return response
+            return json.dumps(intersect_stations)
+        except Exception as ex:
+            return "{'station collection error': 'Error attempting to collect stations from NCDC.'}"
 
 
 def isExtentValid(bounds):

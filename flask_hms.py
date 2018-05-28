@@ -4,14 +4,12 @@ import os
 import logging
 
 # Import modules
-from hms_flask.modules.hms import ncdc_stations
-from hms_flask.modules.hms import percent_area
+from hms_flask.modules import hms_controller
 
 app = Flask(__name__)
 app.config.update(
     DEBUG=True
 )
-
 api = Api(app)
 
 PROJECT_ROOT = os.path.abspath(os.path.dirname(__file__))
@@ -29,15 +27,21 @@ class StatusTest(Resource):
 base_url = "https://localhost:7777/hms"
 logging.info(" flask_hms started: live endpoints")
 logging.info(base_url + "/gis")
-api.add_resource(StatusTest, '/gis/test/')
+api.add_resource(hms_controller.HMSFlaskTest, '/gis/test/')
 
 # HMS endpoints
-# TODO: add endpoint for get after converting post endpoint to celery function
+# Data retrieval endpoint
+api.add_resource(hms_controller.HMSTaskData, '/data')
 logging.info(base_url + "/gis/ncdc/stations/")
-api.add_resource(ncdc_stations.HMSNcdcStations, '/gis/ncdc/stations/')
+api.add_resource(hms_controller.NCDCStationsInGeojson, '/gis/ncdc/stations/')
 logging.info(base_url + "/gis/percentage/")
-api.add_resource(percent_area.getPercentArea, '/gis/percentage/')
+api.add_resource(hms_controller.NLDASGridCells, '/gis/percentage/')
 
+logging.info(base_url + "/hydrodynamic/constant_volume/")
+api.add_resource(hms_controller.Hydrodynamics, '/hydrodynamic/constant_volume/')
+
+#logging.info(base_url + "/hydrodynamics/constant_volume/")
+#api.add_resource(hms_controller.Hydrodynamics.constant_volume, '/hydrodynamics/constant_volume/')
 
 if __name__ == '__main__':
     app.run(port=7777, debug=True)
