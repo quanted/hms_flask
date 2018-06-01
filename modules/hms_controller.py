@@ -160,7 +160,7 @@ class Hydrodynamics(Resource):
         use_celery = False
         args = self.parser.parse_args()
         if args.startDate is None or args.endDate is None:
-            return Response("{'input error':'Arguments startDate and endDate are required. test1")
+            return Response("{'input error':'Arguments startDate and endDate are required.")
         if use_celery:
             if args.submodel is 'constant_volume':
                 job_id = self.CV_start_async.apply_async(
@@ -174,11 +174,12 @@ class Hydrodynamics(Resource):
                 result = data.constant_volume()
             elif args.submodel == 'changing_volume':
                 result = data.changing_volume()
+            elif args.submodel == 'kinematic_wave':
+                result = data.kinematic_wave()
             else:
                 return Response(
-                    "{'input error':'invalid model type. Must be constant_volume, changing_volume, or kinematic_wave. test2'}")
+                    "{'input error':'invalid model type. Must be constant_volume, changing_volume, or kinematic_wave.'}")
             return Response(json.dumps({"data": result}))  # return task_id
-            #return Response("{'input error':'Arguments startDate and endDate are required. test3")
 
         @celery.task(name='hms_constant_volume', bind=True)
         def CV_start_async(self, startDate, endDate, timestep, boundary_flow, segments):
