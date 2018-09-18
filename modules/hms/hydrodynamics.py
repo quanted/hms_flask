@@ -82,8 +82,23 @@ class FlowRouting:
     #              while Q_hat - Q_out.iloc[t+1, i+2] > 1e-3:  # implicit soln for Q_out.iloc[t+1, i+2]
     #                    Q_hat = Q_out.iloc[t+1, i+2]
     #                    Q_out.iloc[t+1, i+2] = Q_out.iloc[t, i+2] + ((Q_out.iloc[t+1, i+1] - Q_out.iloc[t, i+2])*(delta_t))/(model_segs['length'][i]*alpha_data.iloc[t, i]*beta*Q_hat**(beta-1))
-             #else Q_hat - Q_out.iloc[t+1, i+2] <= 1e-3:
-            #Q_out.iloc[t+1, i+2] = Q_out.iloc[t, i+2] + ((Q_out.iloc[t+1, i+1] - Q_out.iloc[t, i+2])*(delta_t))/(model_segs['length'][i]*alpha_data.iloc[t, i]*beta*Q_hat**(beta-1))
+    #              HP_area.iloc[t,i+2]=alpha_data.iloc[t,i]*(Qout.iloc[t+1 , i+2])**beta
+    #              HP_depth.iloc[t+1,i+2]=depth_calc(model_segs['ChanGeom'][i], HP_area.iloc[t,i+2],model_segs['bot_width'][i], model_segs['z_slope'][i])
+        
+        #recalculating alpha using new depth
+        #p_calc2=perimeter_calc(model_segs['ChanGeom'][i],HP_depth.iloc[t+1,i+2], model_segs['bot_width'][i], model_segs['z_slope'][i])
+        #alpha_star=((model_segs['mannings_n'][i]/model_segs['chan_slope'][i]**0.5)*(p_calc2**(2/3)))**beta
+        #while abs((alpha_star-alpha_data.iloc[t,i])/alpha_data.iloc[t,i]) > 1e-3:
+           
+            #alpha_data.iloc[t,i]=alpha_star
+           # HP_area.iloc[t,i+2]=alpha_data.iloc[t,i]*(Qout.iloc[t+1 , i+2])**beta
+           # HP_depth.iloc[t+1,i+2]=depth_calc(model_segs['ChanGeom'][i], HP_area.iloc[t,i+2],model_segs['bot_width'][i], model_segs['z_slope'][i])
+           
+           # alpha_star=((model_segs['mannings_n'][i]/model_segs['chan_slope'][i]**0.5)*(p_calc2**(2/3)))**beta
+                       
+                       
+        #HP_velocity.iloc[t,i+2]=Qout.iloc[t+1 , i+2]/HP_area.iloc[t,i+2]
+        #HP_vol.iloc[t,i+2]=model_segs['length'][i]*HP_area.iloc[t,i+2]
 
     #     #print(Q_out.to_json(orient="split"))
     #     return Q_out.to_json(orient="split")

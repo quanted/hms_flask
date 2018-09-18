@@ -37,6 +37,9 @@ api.add_resource(hms_controller.NCDCStationsInGeojson, '/gis/ncdc/stations/')
 logging.info(base_url + "/gis/percentage/")
 api.add_resource(hms_controller.NLDASGridCells, '/gis/percentage/')
 
+logging.info(base_url + "/proxy/<model>/")
+api.add_resource(hms_controller.ProxyDNC2, '/proxy/<path:model>/')
+
 logging.info(base_url + "/hydrodynamic/constant_volume/")
 api.add_resource(hms_controller.Hydrodynamics, '/hydrodynamic/constant_volume/')
 

@@ -1,7 +1,9 @@
 from flask import Response
-from flask_restful import Resource, reqparse
+from flask_restful import Resource, reqparse, request
 import pymongo as pymongo
 from datetime import datetime
+import uuid
+import requests
 import logging
 import json
 import os
@@ -50,7 +52,8 @@ class HMSTaskData(Resource):
             if task.status == "SUCCESS":
                 mongo_db = connect_to_mongoDB()
                 posts = mongo_db.posts
-                data = json.loads(posts.find_one({'_id': task_id})['data'])
+                posts_data = posts.find_one({'_id': task_id})['data']
+                data = json.loads(posts_data)
                 return Response(json.dumps({'id': task.id, 'status': task.status, 'data': data}))
             else:
                 return Response(json.dumps({'id': task.id, 'status': task.status}))
@@ -194,3 +197,33 @@ class Hydrodynamics(Resource):
             time_stamp = datetime.utcnow()
             data = {'_id': task_id, 'date': time_stamp, 'data': result}
             posts.insert_one(data)
+
+
+class ProxyDNC2(Resource):
+    """
+
+    """
+    def post(self, model=None):
+        request_url = model + "/"
+        request_body = request.json
+        job_id = self.request_to_service.apply_async(args=(request_url, request_body), queue="qed")
+        return Response(json.dumps({'job_id': job_id.id}))
+
+    @celery.task(name='hms_dotnetcore2_request', bind=True)
+    def request_to_service(self, request_url, request_body):
+        task_id = celery.current_task.request.id
+        if task_id is None:
+            task_id = uuid.uuid4()
+        logging.info("task_id: {}".format(task_id))
+        if os.environ['HMS_LOCAL'] == "True":
+            proxy_url = "http://localhost:60050/api/" + request_url
+        else:
+            proxy_url = str(os.environ.get('HMS_BACKEND_SERVER_INTERNAL')) + "/api/" + request_url
+        logging.info("Proxy sending request to dotnetcore2 container. Request url: {}".format(proxy_url))
+        request_data = requests.post(proxy_url, json=request_body)
+        logging.info("Proxy data recieved from dotnetcore2 container.")
+        mongo_db = connect_to_mongoDB()
+        posts = mongo_db.posts
+        time_stamp = datetime.utcnow()
+        data = {'_id': task_id, 'date': time_stamp, 'data': request_data.text}
+        posts.insert_one(data)
