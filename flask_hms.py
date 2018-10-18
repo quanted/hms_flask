@@ -33,7 +33,7 @@ api.add_resource(hms_controller.HMSFlaskTest, '/gis/test/')
 # Data retrieval endpoint
 api.add_resource(hms_controller.HMSTaskData, '/data')
 logging.info(base_url + "/gis/ncdc/stations/")
-api.add_resource(hms_controller.NCDCStationsInGeojson, '/gis/ncdc/stations/')
+api.add_resource(hms_controller.NCDCStationSearch, '/gis/ncdc/stations/')
 logging.info(base_url + "/gis/percentage/")
 api.add_resource(hms_controller.NLDASGridCells, '/gis/percentage/')
 
