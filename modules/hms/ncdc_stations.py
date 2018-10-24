@@ -98,7 +98,7 @@ def stationsInGeometry(geometry, stations):
     intersect_stations.append(["ID", "NAME", "LONG", "LAT", "ELEVATION", "STATIONID"])
     geometry = shape(geometry[0]['geometry'])
     if len(stations) == 0:
-        return "{'Error': 'No Stations found in geometry.'}"
+        return intersect_stations
     print("Number of stations: " + str(len(stations["results"])))
     for station in stations["results"]:
         point = Point(station["longitude"], station["latitude"])
