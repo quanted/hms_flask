@@ -95,6 +95,7 @@ class NCDCStationSearch(Resource):
     parser = parser_base.copy()
     parser.add_argument('latitude')
     parser.add_argument('longitude')
+    parser.add_argument('comid')
     parser.add_argument('geometry')
     parser.add_argument('startDate')
     parser.add_argument('endDate')
@@ -105,7 +106,7 @@ class NCDCStationSearch(Resource):
         if args.startDate is None or args.endDate is None:
             return Response("{'input error':'Arguments startDate and endDate are required.")
         geojson = json.loads(args.geometry)
-        job_id = self.start_async.apply_async(args=(geojson, args.startDate, args.endDate, args.crs, args.latitude, args.longitude), queue="qed")
+        job_id = self.start_async.apply_async(args=(geojson, args.startDate, args.endDate, args.crs, args.latitude, args.longitude, args.comid), queue="qed")
         # job_id = self.start_async(args=(geojson, args.startDate, args.endDate, args.crs, args.latitude, args.longitude), queue="qed")
         return Response(json.dumps({'job_id': job_id.id}))
 
@@ -113,17 +114,19 @@ class NCDCStationSearch(Resource):
         args = self.parser.parse_args()
         if args.startDate is None or args.endDate is None:
             return Response("{'input error':'Arguments startDate and endDate are required.")
-        job_id = self.start_async.apply_async(args=(None, args.startDate, args.endDate, args.crs, args.latitude, args.longitude), queue="qed")
-        # job_id = self.start_async(None, args.startDate, args.endDate, args.crs, args.latitude, args.longitude)
+        job_id = self.start_async.apply_async(args=(None, args.startDate, args.endDate, args.crs, args.latitude, args.longitude, args.comid), queue="qed")
+        # job_id = self.start_async(None, args.startDate, args.endDate, args.crs, args.latitude, args.longitude, args.comid)
         return Response(json.dumps({'job_id': job_id.id}))
 
     @celery.task(name='hms_ncdc_stations', bind=True)
-    def start_async(self, geojson, start_date, end_date, crs, latitude=None, longitude=None):
+    def start_async(self, geojson, start_date, end_date, crs, latitude=None, longitude=None, comid=None):
         task_id = celery.current_task.request.id
         logging.info("task_id: {}".format(task_id))
         logging.info("hms_controller.NCDCStationSearch starting search...")
         if geojson:
             stations = NCDCStations.findStationsInGeoJson(geojson, start_date, end_date, crs)
+        elif comid:
+            stations = NCDCStations.findStationFromComid(comid, start_date, end_date)
         else:
             stations = NCDCStations.findStationFromPoint(latitude, longitude, start_date, end_date)
         logging.info("hms_controller.NCDCStationSearch search completed.")
@@ -131,7 +134,7 @@ class NCDCStationSearch(Resource):
         mongo_db = connect_to_mongoDB()
         posts = mongo_db.posts
         time_stamp = datetime.utcnow()
-        data = {'_id': task_id, 'date': time_stamp, 'data': stations}
+        data = {'_id': task_id, 'date': str(time_stamp), 'data': stations}
         posts.insert_one(data)
 
 

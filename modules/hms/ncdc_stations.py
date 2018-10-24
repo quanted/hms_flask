@@ -54,9 +54,23 @@ class NCDCStations:
                 i = i + 1
         return "{'stationNotFoundError': 'No stations were found within one deg of Point({} {})'}".format(lng, lat)
 
+    @staticmethod
+    def findStationFromComid(comid, startDate=None, endDate=None):
+        logging.info("HMS Celery task: finding NCDC Station closest to catchment: {}".format(comid))
+        geometry = getCatchmentGeometry(comid)
+        if "Request error" in geometry:
+            return geometry
+        else:
+            stations = NCDCStations.findStationsInGeoJson(json.loads(geometry.text), startDate, endDate)
+        if stations == "":
+            return "{'stationNotFoundError': 'No stations were found within catchment: {}'}".format(comid)
+        else:
+            return stations
+
 
 def isExtentValid(bounds):
     return bounds[0] > 90 or bounds[0] < -90 or bounds[1] > 180 or bounds[1] < 180 or bounds[2] > 90 or bounds[2] < -90 or bounds[3] > 180 or bounds[3] < -180
+
 
 def getStations(bounds, startDate, endDate):
     '''
@@ -77,11 +91,14 @@ def getStations(bounds, startDate, endDate):
     stations = requests.get(request_url, params=None, headers=headers)
     return json.loads(stations.text)
 
+
 def stationsInGeometry(geometry, stations):
     intersect_stations = []
     station_index = 0
     intersect_stations.append(["ID", "NAME", "LONG", "LAT", "ELEVATION", "STATIONID"])
     geometry = shape(geometry[0]['geometry'])
+    if len(stations) == 0:
+        return "{'Error': 'No Stations found in geometry.'}"
     print("Number of stations: " + str(len(stations["results"])))
     for station in stations["results"]:
         point = Point(station["longitude"], station["latitude"])
@@ -92,6 +109,7 @@ def stationsInGeometry(geometry, stations):
             intersect_stations.append(add_station)
     print("Number of stations in geometry:" + str(station_index))
     return intersect_stations
+
 
 def orderStations(stations, lat, lng):
     station_list = []
@@ -108,3 +126,14 @@ def orderStations(stations, lat, lng):
         station_list.append(_s)
     station_list.sort(key=lambda x: x["distance"])
     return station_list
+
+
+def getCatchmentGeometry(comid):
+    catchment_base_url = "https://watersgeo.epa.gov/arcgis/rest/services/NHDPlus_NP21/Catchments_NP21_Simplified/MapServer/0/query?where=FEATUREID=" + comid
+    catchment_url_options = "&text=&objectIds=&time=&geometry=&geometryType=esriGeometryEnvelope&inSR=&spatialRel=esriSpatialRelIntersects&relationParam=&outFields=*&returnGeometry=true&returnTrueCurves=false&maxAllowableOffset=&geometryPrecision=&outSR=%7B%22wkt%22+%3A+%22GEOGCS%5B%5C%22GCS_WGS_1984%5C%22%2CDATUM%5B%5C%22D_WGS_1984%5C%22%2C+SPHEROID%5B%5C%22WGS_1984%5C%22%2C6378137%2C298.257223563%5D%5D%2CPRIMEM%5B%5C%22Greenwich%5C%22%2C0%5D%2C+UNIT%5B%5C%22Degree%5C%22%2C0.017453292519943295%5D%5D%22%7D&returnIdsOnly=false&returnCountOnly=false&orderByFields=&groupByFieldsForStatistics=&outStatistics=&returnZ=false&returnM=false&gdbVersion=&returnDistinctValues=false&resultOffset=&resultRecordCount=&queryByDistance=&returnExtentsOnly=false&datumTransformation=&parameterValues=&rangeValues=&f=geojson"
+    url = catchment_base_url + catchment_url_options
+    try:
+        geometry = requests.get(url)
+    except requests.exceptions.RequestException as ex:
+        return "Request error, unable to get geometry for catchment {}.".format(comid)
+    return geometry
