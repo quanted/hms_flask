@@ -145,28 +145,28 @@ class NLDASGridCells(Resource):
     parser = parser_base.copy()
     parser.add_argument('huc_8_num')
     parser.add_argument('huc_12_num')
-    parser.add_argument('com_id_num')
     parser.add_argument('com_id_list')
+    parser.add_argument('grid_source')
 
     def get(self):
         args = self.parser.parse_args()
         task_id = self.start_async.apply_async(
-            args=(args.huc_8_num, args.huc_12_num, args.com_id_num, args.com_id_list), queue="qed")
+            args=(args.huc_8_num, args.huc_12_num, args.com_id_list, args.grid_source), queue="qed")
         # task_id = self.start_async(args.huc_8_num, args.huc_12_num, args.com_id_num, args.com_id_list)
         return Response(json.dumps({'job_id': task_id.id}))
 
     @celery.task(name='hms_nldas_grid', bind=True)
-    def start_async(self, huc_8_id, huc_12_id, com_id, com_id_list):
+    def start_async(self, huc_8_id, huc_12_id, com_id_list, grid_source):
         task_id = celery.current_task.request.id
         logging.info("task_id: {}".format(task_id))
         logging.info("hms_controller.NLDASGridCells starting calculation...")
-        logging.info("inputs id: {}, {}, {}, {}".format(huc_8_id, huc_12_id, com_id, com_id_list))
-        if huc_8_id and com_id:
-            catchment_cells = CatchmentGrid.getIntersectCellsInCatchment(huc_8_id, com_id)
+        logging.info("inputs id: {}, {}, {}, {}".format(huc_8_id, huc_12_id, com_id_list, grid_source))
+        if huc_8_id:
+            catchment_cells = CatchmentGrid.getIntersectCellsInCatchment(huc_8_id, grid_source)
         elif huc_12_id:
-            catchment_cells = CatchmentGrid.getIntersectCellsInHuc12(huc_12_id)
+            catchment_cells = CatchmentGrid.getIntersectCellsInHuc12(huc_12_id, grid_source)
         elif com_id_list:
-            catchment_cells = CatchmentGrid.getIntersectCellsInComlist(com_id_list)
+            catchment_cells = CatchmentGrid.getIntersectCellsInComlist(com_id_list, grid_source)
         else:
             catchment_cells = {}
         logging.info("hms_controller.NLDASGridCells calcuation completed.")
