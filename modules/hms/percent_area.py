@@ -20,7 +20,6 @@ import os
 # parser = reqparse.RequestParser()
 # parser.add_argument('huc_8_num')
 # parser.add_argument('huc_12_num')
-# parser.add_argument('com_id_num')
 # parser.add_argument('lat_long_x')
 # parser.add_argument('lat_long_y')
 # parser.add_argument('filename', location='files', type=FileStorage)
@@ -37,18 +36,18 @@ class CatchmentGrid:
     """
 
     @staticmethod
-    def getIntersectCellsInCatchment(huc_id, com_id):
-        table = process_huc_8(huc_id, com_id)
+    def getIntersectCellsInCatchment(huc_id, grid_source):
+        table = process_huc_8(huc_id, grid_source)
         return json.dumps(table, indent=4, sort_keys=True, default=str)
 
     @staticmethod
-    def getIntersectCellsInHuc12(huc_id):
-        table = process_huc_12(huc_id)
+    def getIntersectCellsInHuc12(huc_id, grid_source):
+        table = process_huc_12(huc_id, grid_source)
         return json.dumps(table, indent=4, sort_keys=True, default=str)
 
     @staticmethod
-    def getIntersectCellsInComlist(comlist):
-        table = process_com_list(comlist)
+    def getIntersectCellsInComlist(comlist, grid_source):
+        table = process_com_list(comlist, grid_source)
         return json.dumps(table, indent=4, sort_keys=True, default=str)
 
 
@@ -113,35 +112,38 @@ class CatchmentPoint():
         self.percentArea = percentArea
 
 
-def process_huc_8(huc_8_num, com_id_num):
+def process_huc_8(huc_8_num, grid_source):
     url = 'ftp://newftp.epa.gov/exposure/BasinsData/NHDPlus21/NHDPlus' + str(huc_8_num) + '.zip'
     req = urllib.request.urlopen(url)
     shzip = ZipFile(io.BytesIO(req.read()))
     mshp = shzip.open('NHDPlus' + str(huc_8_num) + '/Drainage/Catchment.shp')
     mdbf = shzip.open('NHDPlus' + str(huc_8_num) + '/Drainage/Catchment.dbf')
     sfile = shp_to_geojson(mshp, mdbf)
-    text_file = open("Output.txt", "w")
-    text_file.write(sfile)
-    text_file.close()
-    result_table = readGeometryOld(sfile, url, com_id_num)
+    gridfile = get_grid(grid_source)
+    result_table = readHucGeometry(sfile, gridfile, url, None)
     return result_table
 
 
-def process_huc_12(huc_12_num):
+def process_huc_12(huc_12_num, grid_source):
     start = time.time()
     table = GeometryTable()
-    url = 'ftp://newftp.epa.gov/exposure/NHDV1/HUC12_Boundries/' + str(huc_12_num) + '.zip'
-    req = urllib.request.urlopen(url)
-    shzip = ZipFile(io.BytesIO(req.read()))
-    try:
-        mshp = shzip.open('huc12.shp')
-        mdbf = shzip.open('huc12.dbf')
-    except:
-        mshp = shzip.open(str(huc_12_num) + '/huc12.shp')
-        mdbf = shzip.open(str(huc_12_num) + '/huc12.dbf')
-    sfile = shp_to_geojson(mshp, mdbf)
-    result_table = readGeometryOld(sfile, url, None)
+    url = 'https://watersgeo.epa.gov/arcgis/rest/services/NHDPlus_NP21/Catchments_NP21_Simplified/MapServer/0/query?where=WBD_HUC12+LIKE+%28%27' + str(huc_12_num) + '%27%29&text=&objectIds=&time=&geometry=&geometryType=esriGeometryEnvelope&inSR=&spatialRel=esriSpatialRelIntersects&relationParam=&outFields=FEATUREID&returnGeometry=true&returnTrueCurves=false&maxAllowableOffset=&geometryPrecision=&outSR=&returnIdsOnly=false&returnCountOnly=false&orderByFields=&groupByFieldsForStatistics=&outStatistics=&returnZ=false&returnM=false&gdbVersion=&returnDistinctValues=false&resultOffset=&resultRecordCount=&queryByDistance=&returnExtentsOnly=false&datumTransformation=&parameterValues=&rangeValues=&f=geojson'
+    filestr = urllib.request.urlopen(url).read()
+    sfile = re.search(r'(?={"type").*(]})', str(filestr)).group(0)
+    gridfile = get_grid(grid_source)
+    result_table = readHucGeometry(sfile, gridfile, url, None)
     return result_table
+
+def get_grid(grid_source):
+    shape = None
+    if(grid_source == 'nldas'):
+        return '/NLDAS.geojson'
+    elif (grid_source == 'gldas'):
+        return '/GLDAS.geojson'
+    elif (grid_source == 'prism'):
+        return '/PRISM.bil'
+    elif (grid_source == 'daymet'):
+        return '/DAYMET.geojson'
 
 
 def shp_to_geojson(mshp, mdbf):
@@ -161,24 +163,24 @@ def shp_to_geojson(mshp, mdbf):
     return geojson
 
 
-def process_com_list(comlist):
-    start = time.time()
-    table = GeometryTable()
-    multi, coms = [], []
-    url = ''
-    for comid in comlist.split(','):
-        sfile = urllib.request.urlopen(
-            'https://ofmpub.epa.gov/waters10/NavigationDelineation.Service?pNavigationType=PP&pStartComid=' + str(
-                comid) + '&pStopComid=' + str(comid)).read()
-        com = re.search(r'([0-9]{2,})', str(sfile))
-        geojson = re.search(r'(?={"type").*(]})', str(sfile))
-        if (geojson != None):
-            coms.append(comid)
-            geo = ogr.CreateGeometryFromJson(geojson.group(0))
-            multi.append(geo)
-    table = readComs(multi, coms)
-    table['metadata']['execution time'] = time.time() - start
-    return table
+def process_com_list(comlist, grid_source):
+	start = time.time()
+	table = GeometryTable()
+	multi, coms = [], []
+	url = ''
+	for comid in comlist.split(','):
+		sfile = urllib.request.urlopen(
+			'https://ofmpub.epa.gov/waters10/NavigationDelineation.Service?pNavigationType=PP&pStartComid=' + str(
+				comid) + '&pStopComid=' + str(comid)).read()
+		com = re.search(r'([0-9]{2,})', str(sfile))
+		geojson = re.search(r'(?={"type").*(]})', str(sfile))
+		if (geojson != None):
+			coms.append(comid)
+			geo = ogr.CreateGeometryFromJson(geojson.group(0))
+			multi.append(geo)
+	table = readComs(multi, coms)
+	table['metadata']['execution time'] = time.time() - start
+	return table
 
 
 def process_lat_long(coordinate):
@@ -200,245 +202,261 @@ def process_lat_long(coordinate):
 
 
 def readComs(geometries, comlist):
-    pa = os.path.dirname(__file__)
-    nldas = ogr.Open(pa + '/NLDAS.geojson')  # To Do: Change to filepath on server
-    nldasLayer = nldas.GetLayer()
-    overlap, newpolygons = [], []
-    totalPoly = ogr.Geometry(ogr.wkbMultiPolygon)
-    # Treat all polygons as one larger one since we are just finding overlapping cells
-    for polygon in geometries:
-        totalPoly.AddGeometry(polygon)
-        newpolygons.append(polygon.ExportToJson())
-    totalPoly = totalPoly.UnionCascaded()
-    if (totalPoly == None):
-        totalPoly = geometries[0].GetGeometryRef()  # latLong
-    # Calculate cells that contain polygons ahead of time to make intersections faster
-    for feature in nldasLayer:
-        cell = feature.GetGeometryRef()
-        if (totalPoly.Intersects(cell)):
-            overlap.append(cell.ExportToJson())
-    table = GeometryTable()
-    i = 0
-    num_points = 0
-    pool = mp.Pool(30)  # 30 = Number of cores used to parallelize
-    args = [(polygon, overlap) for polygon in newpolygons]
-    results = pool.map_async(calculations, args)
-    pool.close()
-    pool.join()
-    for obj, np in results.get():
-        table.geometry[comlist[i]] = obj.__dict__
-        # table = obj
-        num_points += np
-        i += 1
-    table.metadata['request date'] = datetime.datetime.now()
-    table.metadata['number of points'] = num_points
-    table.metadata['shapefile source'] = 'https://ofmpub.epa.gov/waters10/NavigationDelineation.Service'
-    table.metadata['nldas source'] = 'https://ldas.gsfc.nasa.gov/nldas/gis/NLDAS_Grid_Reference.zip'
-    # table.metadata['execution time'] = time.time() - start
-    # De-reference shapefiles
-    shape = None
-    nldas = None
-    return table.__dict__
+	pa = os.path.dirname(__file__)
+	nldas = ogr.Open(pa + '/NLDAS.geojson')  # To Do: Change to filepath on server
+	nldasLayer = nldas.GetLayer()
+	overlap, newpolygons = [], []
+	totalPoly = ogr.Geometry(ogr.wkbMultiPolygon)
+	# Treat all polygons as one larger one since we are just finding overlapping cells
+	for polygon in geometries:
+		totalPoly.AddGeometry(polygon)
+		newpolygons.append(polygon.ExportToJson())
+	totalPoly = totalPoly.UnionCascaded()
+	if (totalPoly == None):
+		totalPoly = geometries[0].GetGeometryRef()  # latLong
+	# Calculate cells that contain polygons ahead of time to make intersections faster
+	text_file = open("Output.geojson", "w")
+	text_file.write(totalPoly.ExportToJson())
+	text_file.close()
+	for feature in nldasLayer:
+		cell = feature.GetGeometryRef()
+		if (totalPoly.Intersects(cell)):
+			overlap.append(cell.ExportToJson())
+	table = GeometryTable()
+	i = 0;
+	num_points = 0
+	for polygon in newpolygons:
+		obj, np = calculations(polygon, overlap)
+		table.geometry[comlist[i]] = obj.__dict__
+		num_points += np
+		i += 1
+	'''
+	pool = mp.Pool(30)  # 30 = Number of cores used to parallelize
+	args = [(polygon, overlap) for polygon in newpolygons]
+	results = pool.map_async(calculations, args)
+	pool.close()
+	pool.join()
+	for obj, np in results.get():
+		table.geometry[comlist[i]] = obj.__dict__
+		#table = obj
+		num_points += np
+		i += 1'''
+	table.metadata['request date'] = datetime.datetime.now()
+	table.metadata['number of points'] = num_points
+	table.metadata['shapefile source'] = 'https://ofmpub.epa.gov/waters10/NavigationDelineation.Service'
+	table.metadata['nldas source'] = 'https://ldas.gsfc.nasa.gov/nldas/gis/NLDAS_Grid_Reference.zip'
+	#table.metadata['execution time'] = time.time() - start
+	# De-reference shapefiles
+	shape = None
+	nldas = None
+	return table.__dict__
 
 
 def readGeometry(sfile, url, com):
-    # start = time.time()
-    shapeFiles = []
-    nldasFiles = []
-    colNames = []
-    shape = ogr.Open(sfile)
-    nldas = ogr.Open('NLDAS.geojson')  # To Do: Change to filepath on server
-    shapeLayer = shape.GetLayer()
-    nldasLayer = nldas.GetLayer()
-    # Getting features from shapefile
-    colLayer = shape.GetLayer(0).GetLayerDefn()
-    for i in range(colLayer.GetFieldCount()):
-        colNames.append(colLayer.GetFieldDefn(i).GetName())
-    coms = []
-    overlap, polygons, newpolygons = [], [], []
-    if ('COMID' in colNames):
-        for feature in shapeLayer:
-            if (com):
-                if (feature.GetField('COMID') == int(com)):  # Only focusing on the given catchment argument
-                    polygons.append(feature)
-                    coms.append(feature.GetField('COMID'))
-            else:
-                polygons.append(feature)
-                coms.append(feature.GetField('COMID'))
-        if (len(polygons) <= 0):
-            return 'The COMID was not found in the specified HUC8.'  # If user enters comid not in huc
-    elif ('HUC_8' in colNames):
-        for feature in shapeLayer:
-            polygons.append(feature)
-            try:
-                coms.append(feature.GetField('OBJECTID'))  # Object IDs specify each shape (treat like catchment)
-            except:
-                coms = [None] * len(shapeLayer)
-    else:
-        coms = [None] * len(shapeLayer)
-        if (len(com) > 1):
-            coms = com
-        else:
-            coms[0] = com  # Lat/long case specifies one COMID
-        for feature in shapeLayer:
-            polygons.append(feature)
-    # Reproject geometries from shapefile
-    totalPoly = ogr.Geometry(ogr.wkbMultiPolygon)
-    # Treat all polygons as one larger one since we are just finding overlapping cells
-    for polygon in polygons:
-        poly = polygon.GetGeometryRef()
-        totalPoly.AddGeometry(poly)
-        newpolygons.append(poly.ExportToJson())
-    totalPoly = totalPoly.UnionCascaded()
-    if (totalPoly == None):
-        totalPoly = polygons[0].GetGeometryRef()  # latLong
-    # Calculate cells that contain polygons ahead of time to make intersections faster
-    for feature in nldasLayer:
-        cell = feature.GetGeometryRef()
-        if (totalPoly.Intersects(cell)):
-            overlap.append(cell.ExportToJson())
-    table = GeometryTable()
-    i = 0;
-    num_points = 0
-    pool = mp.Pool(30)  # 30 = Number of cores used to parallelize
-    args = [(polygon, overlap) for polygon in newpolygons]
-    results = pool.map_async(calculations, args)
-    pool.close()
-    pool.join()
-    for obj, np in results.get():
-        # table.geometry[coms[i]] = obj.__dict__
-        table = obj
-        num_points += np
-        i += 1
-    '''
-    table.metadata['request date'] = datetime.datetime.now()
-    table.metadata['number of points'] = num_points
-    table.metadata['shapefile source'] = url
-    table.metadata['nldas source'] = 'https://ldas.gsfc.nasa.gov/nldas/gis/NLDAS_Grid_Reference.zip'
-    table.metadata['execution time'] = time.time() - start'''
-    # De-reference shapefiles
-    shape = None
-    nldas = None
-    return table.__dict__
+	#start = time.time()
+	shapeFiles = []
+	nldasFiles = []
+	colNames = []
+	shape = ogr.Open(sfile)
+	pa = os.path.dirname(__file__)
+	nldas = ogr.Open(pa + '/NLDAS.geojson')  # To Do: Change to filepath on server
+	shapeLayer = shape.GetLayer()
+	nldasLayer = nldas.GetLayer()
+	# Getting features from shapefile
+	colLayer = shape.GetLayer(0).GetLayerDefn()
+	for i in range(colLayer.GetFieldCount()):
+		colNames.append(colLayer.GetFieldDefn(i).GetName())
+	coms = []
+	overlap, polygons, newpolygons = [], [], []
+	if ('COMID' in colNames):
+		for feature in shapeLayer:
+			if(com):
+				if (feature.GetField('COMID') == int(com)):  # Only focusing on the given catchment argument
+					polygons.append(feature)
+					coms.append(feature.GetField('COMID'))
+			else:
+				polygons.append(feature)
+				coms.append(feature.GetField('COMID'))
+		if(len(polygons) <= 0):
+			return 'The COMID was not found in the specified HUC8.'  # If user enters comid not in huc
+	elif ('HUC_8' in colNames):
+		for feature in shapeLayer:
+			polygons.append(feature)
+			try:
+				coms.append(feature.GetField('OBJECTID'))# Object IDs specify each shape (treat like catchment)
+			except:
+				coms = [None] * len(shapeLayer)
+	else:
+		coms = [None] * len(shapeLayer)
+		if(len(com) > 1):
+			coms = com
+		else:
+			coms[0] = com  #Lat/long case specifies one COMID
+		for feature in shapeLayer:
+			polygons.append(feature)
+	# Reproject geometries from shapefile
+	totalPoly = ogr.Geometry(ogr.wkbMultiPolygon)
+	# Treat all polygons as one larger one since we are just finding overlapping cells
+	for polygon in polygons:
+		poly = polygon.GetGeometryRef()
+		totalPoly.AddGeometry(poly)
+		newpolygons.append(poly.ExportToJson())
+	totalPoly = totalPoly.UnionCascaded()
+	if (totalPoly == None):
+		totalPoly = polygons[0].GetGeometryRef()  # latLong
+	# Calculate cells that contain polygons ahead of time to make intersections faster
+	for feature in nldasLayer:
+		cell = feature.GetGeometryRef()
+		if (totalPoly.Intersects(cell)):
+			overlap.append(cell.ExportToJson())
+	table = GeometryTable()
+	i = 0;
+	num_points = 0
+	for polygon in newpolygons:
+		obj, np = calculations(polygon, overlap)
+		#table.geometry[coms[i]] = obj.__dict__
+		table = obj
+		num_points += np
+		i += 1
+	'''
+	pool = mp.Pool(30)	#30 = Number of cores used to parallelize
+	args = [(polygon, overlap) for polygon in newpolygons]
+	results = pool.map_async(calculations, args)
+	pool.close()
+	pool.join()
+	for obj, np in results.get():
+		#table.geometry[coms[i]] = obj.__dict__
+		table = obj
+		num_points += np
+		i += 1'''
+	table.metadata['request date'] = datetime.datetime.now()
+	table.metadata['number of points'] = num_points
+	table.metadata['shapefile source'] = url
+	table.metadata['nldas source'] = 'https://ldas.gsfc.nasa.gov/nldas/gis/NLDAS_Grid_Reference.zip'
+	table.metadata['execution time'] = time.time() - start
+	# De-reference shapefiles
+	shape = None
+	nldas = None
+	return table.__dict__
 
 
-def calculations(arg):
-    polygon, overlap = arg
-    num_points = 0
-    poly = ogr.CreateGeometryFromJson(polygon)
-    huc12table = Catchment()
-    for feature in overlap:
-        cell = ogr.CreateGeometryFromJson(feature)
-        interArea = 0
-        squareArea = cell.Area()
-        if (poly.Intersects(cell)):
-            inter = poly.Intersection(cell)
-            interArea += inter.Area()
-            percentArea = (interArea / squareArea) * 100
-            catchtable = CatchmentPoint(squareArea, interArea, cell.Centroid().GetY(), cell.Centroid().GetX(),
-                                        percentArea)
-            huc12table.points.append(catchtable.__dict__)
-            num_points += 1
-    return huc12table, num_points
+def calculations(polygon, overlap):
+	num_points = 0
+	poly = ogr.CreateGeometryFromJson(polygon)
+	huc12table = Catchment()
+	for feature in overlap:
+		cell = ogr.CreateGeometryFromJson(feature)
+		interArea = 0
+		squareArea = cell.Area()
+		if (poly.Intersects(cell)):
+			inter = poly.Intersection(cell)
+			if inter == None:
+				interArea += 0
+			else:
+				interArea += inter.Area()
+			percentArea = (interArea / squareArea) * 100
+			catchtable = CatchmentPoint(squareArea, interArea, cell.Centroid().GetY(), cell.Centroid().GetX(),
+										percentArea)
+			huc12table.points.append(catchtable.__dict__)
+			num_points += 1
+	return huc12table, num_points
 
 
 '''
-OLDER FUNCTIONS
+HUC 8 and HUC 12
 '''
 
 
-def readGeometryOld(sfile, url, com):
-    start = time.time()
-    shapeFiles = []
-    nldasFiles = []
-    colNames = []
-    shape = ogr.Open(sfile)
-    nldas = ogr.Open('NLDAS.geojson')  # To Do: Change to filepath on server
-    shapeLayer = shape.GetLayer()
-    nldasLayer = nldas.GetLayer()
-    # Getting features from shapefile
-    colLayer = shape.GetLayer(0).GetLayerDefn()
-    for i in range(colLayer.GetFieldCount()):
-        colNames.append(colLayer.GetFieldDefn(i).GetName())
-    coms = []
-    overlap, polygons, newpolygons = [], [], []
-    if ('COMID' in colNames):
-        for feature in shapeLayer:
-            if (com):
-                if (feature.GetField('COMID') == int(com)):  # Only focusing on the given catchment argument
-                    polygons.append(feature)
-                    coms.append(feature.GetField('COMID'))
-            else:
-                polygons.append(feature)
-                coms.append(feature.GetField('COMID'))
-        if (len(polygons) <= 0):
-            return 'The COMID was not found in the specified HUC8.'  # If user enters comid not in huc
-    elif ('HUC_8' in colNames):
-        for feature in shapeLayer:
-            polygons.append(feature)
-            try:
-                coms.append(feature.GetField('OBJECTID'))  # Object IDs specify each shape (treat like catchment)
-            except:
-                coms = [None] * len(shapeLayer)
-    else:
-        coms = [None] * len(shapeLayer)
-        if (com):
-            coms[0] = com  # Lat/long case specifies one COMID
-        for feature in shapeLayer:
-            polygons.append(feature)
-    # Reproject geometries from shapefile
-    totalPoly = ogr.Geometry(ogr.wkbMultiPolygon)
-    # Treat all polygons as one larger one since we are just finding overlapping cells
-    for polygon in polygons:
-        poly = polygon.GetGeometryRef()
-        totalPoly.AddGeometry(poly)
-        newpolygons.append(poly.ExportToJson())
-    totalPoly = totalPoly.UnionCascaded()
-    if (totalPoly == None):
-        totalPoly = polygons[0].GetGeometryRef()  # latLong
-    # Calculate cells that contain polygons ahead of time to make intersections faster
-    for feature in nldasLayer:
-        cell = feature.GetGeometryRef()
-        if (totalPoly.Intersects(cell)):
-            overlap.append(cell.ExportToJson())
-    table = GeometryTable()
-    i = 0;
-    num_points = 0
-    pool = mp.Pool(30)  # 30 = Number of cores used to parallelize
-    args = [(polygon, overlap) for polygon in newpolygons]
-    results = pool.map_async(calculationsOld, args)
-    pool.close()
-    pool.join()
-    for obj, np in results.get():
-        table.geometry[coms[i]] = obj.__dict__
-        num_points += np
-        i += 1
-    table.metadata['request date'] = datetime.datetime.now()
-    table.metadata['number of points'] = num_points
-    table.metadata['shapefile source'] = url
-    table.metadata['nldas source'] = 'https://ldas.gsfc.nasa.gov/nldas/gis/NLDAS_Grid_Reference.zip'
-    table.metadata['execution time'] = time.time() - start
-    # De-reference shapefiles
-    shape = None
-    nldas = None
-    return table.__dict__
-
-
-def calculationsOld(arg):
-    polygon, overlap = arg
-    num_points = 0
-    poly = ogr.CreateGeometryFromJson(polygon)
-    huc12table = Catchment()
-    for feature in overlap:
-        cell = ogr.CreateGeometryFromJson(feature)
-        interArea = 0
-        squareArea = cell.Area()
-        if (poly.Intersects(cell)):
-            inter = poly.Intersection(cell)
-            interArea += inter.Area()
-            percentArea = (interArea / squareArea) * 100
-            catchtable = CatchmentPoint(squareArea, interArea, cell.Centroid().GetY(), cell.Centroid().GetX(),
-                                        percentArea)
-            huc12table.points.append(catchtable.__dict__)
-            num_points += 1
-    return huc12table, num_points
+def readHucGeometry(sfile, gridfile, url, com):
+	start = time.time()
+	colNames = []
+	shape = ogr.Open(sfile)
+	#nldas = ogr.Open('NLDAS.geojson')  # To Do: Change to filepath on server
+	shapeLayer = shape.GetLayer()
+	#nldasLayer = nldas.GetLayer()
+	pa = os.path.dirname(__file__)
+	grid = ogr.Open(pa + gridfile)  # To Do: Change to filepath on server
+	gridLayer = grid.GetLayer()
+	# Getting features from shapefile
+	colLayer = shape.GetLayer(0).GetLayerDefn()
+	for i in range(colLayer.GetFieldCount()):
+		colNames.append(colLayer.GetFieldDefn(i).GetName())
+	coms = []
+	overlap, polygons, newpolygons = [], [], []
+	if ('FEATUREID' in colNames):   #'FEATUREID' was 'COMID'
+		for feature in shapeLayer:
+			if (com):
+				if (feature.GetField('FEATUREID') == int(com)):  # Only focusing on the given catchment argument
+					polygons.append(feature)
+					coms.append(feature.GetField('FEATUREID'))
+			else:
+				polygons.append(feature)
+				coms.append(feature.GetField('FEATUREID'))
+		if (len(polygons) <= 0):
+			return 'The COMID was not found in the specified HUC.'  # If user enters comid not in huc
+	elif ('COMID' in colNames):   #'FEATUREID' was 'COMID'
+		for feature in shapeLayer:
+			if (com):
+				if (feature.GetField('COMID') == int(com)):  # Only focusing on the given catchment argument
+					polygons.append(feature)
+					coms.append(feature.GetField('COMID'))
+			else:
+				polygons.append(feature)
+				coms.append(feature.GetField('COMID'))
+		if (len(polygons) <= 0):
+			return 'The COMID was not found in the specified HUC.'  # If user enters comid not in huc
+	elif ('HUC_8' in colNames):
+		for feature in shapeLayer:
+			polygons.append(feature)
+			try:
+				coms.append(feature.GetField('OBJECTID'))  # Object IDs specify each shape (treat like catchment)
+			except:
+				coms = [None] * len(shapeLayer)
+	else:
+		coms = [None] * len(shapeLayer)
+		if (com):
+			coms[0] = com  # Lat/long case specifies one COMID
+		for feature in shapeLayer:
+			polygons.append(feature)
+	# Reproject geometries from shapefile
+	totalPoly = ogr.Geometry(ogr.wkbMultiPolygon)
+	# Treat all polygons as one larger one since we are just finding overlapping cells
+	for polygon in polygons:
+		poly = polygon.GetGeometryRef()
+		totalPoly.AddGeometry(poly)
+		newpolygons.append(poly.ExportToJson())
+	totalPoly = totalPoly.UnionCascaded()
+	if (totalPoly == None):
+		totalPoly = polygons[0].GetGeometryRef()  # latLong
+	# Calculate cells that contain polygons ahead of time to make intersections faster
+	for feature in gridLayer:
+		cell = feature.GetGeometryRef()
+		if (totalPoly.Intersects(cell)):
+			overlap.append(cell.ExportToJson())
+	table = GeometryTable()
+	i = 0;
+	num_points = 0
+	for polygon in newpolygons:
+		obj, np = calculations(polygon, overlap)
+		table.geometry[coms[i]] = obj.__dict__
+		num_points += np
+		i += 1
+	'''
+	pool = mp.Pool(30)  # 30 = Number of cores used to parallelize
+	args = [(polygon, overlap) for polygon in newpolygons]
+	results = pool.map_async(calculations, args)
+	pool.close()
+	pool.join()
+	for obj, np in results.get():
+		table.geometry[coms[i]] = obj.__dict__
+		num_points += np
+		i += 1'''
+	table.metadata['request date'] = datetime.datetime.now()
+	table.metadata['number of points'] = num_points
+	table.metadata['shapefile source'] = url
+	table.metadata['nldas source'] = 'https://ldas.gsfc.nasa.gov/nldas/gis/NLDAS_Grid_Reference.zip'
+	table.metadata['execution time'] = time.time() - start
+	# De-reference shapefiles
+	shape = None
+	nldas = None
+	return table.__dict__

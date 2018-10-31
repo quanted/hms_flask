@@ -88,11 +88,14 @@ class HMSFlaskTest(Resource):
         posts.insert_one(data)
 
 
-class NCDCStationsInGeojson(Resource):
+class NCDCStationSearch(Resource):
     """
     Controller class for getting all ncdc stations within a provided geometry, as geojson, and a date range.
     """
     parser = parser_base.copy()
+    parser.add_argument('latitude')
+    parser.add_argument('longitude')
+    parser.add_argument('comid')
     parser.add_argument('geometry')
     parser.add_argument('startDate')
     parser.add_argument('endDate')
@@ -103,21 +106,35 @@ class NCDCStationsInGeojson(Resource):
         if args.startDate is None or args.endDate is None:
             return Response("{'input error':'Arguments startDate and endDate are required.")
         geojson = json.loads(args.geometry)
-        job_id = self.start_async.apply_async(args=(geojson, args.startDate, args.endDate, args.crs), queue="qed")
+        job_id = self.start_async.apply_async(args=(geojson, args.startDate, args.endDate, args.crs, args.latitude, args.longitude, args.comid), queue="qed")
+        # job_id = self.start_async(args=(geojson, args.startDate, args.endDate, args.crs, args.latitude, args.longitude), queue="qed")
+        return Response(json.dumps({'job_id': job_id.id}))
+
+    def get(self):
+        args = self.parser.parse_args()
+        if args.startDate is None or args.endDate is None:
+            return Response("{'input error':'Arguments startDate and endDate are required.")
+        job_id = self.start_async.apply_async(args=(None, args.startDate, args.endDate, args.crs, args.latitude, args.longitude, args.comid), queue="qed")
+        # job_id = self.start_async(None, args.startDate, args.endDate, args.crs, args.latitude, args.longitude, args.comid)
         return Response(json.dumps({'job_id': job_id.id}))
 
     @celery.task(name='hms_ncdc_stations', bind=True)
-    def start_async(self, geojson, start_date, end_date, crs):
+    def start_async(self, geojson, start_date, end_date, crs, latitude=None, longitude=None, comid=None):
         task_id = celery.current_task.request.id
         logging.info("task_id: {}".format(task_id))
-        logging.info("hms_controller.NCDCStationsInGeojson starting search...")
-        stations = NCDCStations.findStationsInGeoJson(geojson, start_date, end_date, crs)
-        logging.info("hms_controller.NCDCStationsInGeojson search completed.")
+        logging.info("hms_controller.NCDCStationSearch starting search...")
+        if geojson:
+            stations = NCDCStations.findStationsInGeoJson(geojson, start_date, end_date, crs)
+        elif comid:
+            stations = NCDCStations.findStationFromComid(comid, start_date, end_date)
+        else:
+            stations = NCDCStations.findStationFromPoint(latitude, longitude, start_date, end_date)
+        logging.info("hms_controller.NCDCStationSearch search completed.")
         logging.info("Adding data to mongoDB...")
         mongo_db = connect_to_mongoDB()
         posts = mongo_db.posts
         time_stamp = datetime.utcnow()
-        data = {'_id': task_id, 'date': time_stamp, 'data': stations}
+        data = {'_id': task_id, 'date': str(time_stamp), 'data': stations}
         posts.insert_one(data)
 
 
@@ -128,27 +145,28 @@ class NLDASGridCells(Resource):
     parser = parser_base.copy()
     parser.add_argument('huc_8_num')
     parser.add_argument('huc_12_num')
-    parser.add_argument('com_id_num')
     parser.add_argument('com_id_list')
+    parser.add_argument('grid_source')
 
     def get(self):
         args = self.parser.parse_args()
-        task_id = self.start_async.apply_async(args=(args.huc_8_num, args.huc_12_num, args.com_id_num, args.com_id_list), queue="qed")
-        #task_id = self.start_async(args.huc_8_num, args.huc_12_num, args.com_id_num, args.com_id_list)
+        task_id = self.start_async.apply_async(
+            args=(args.huc_8_num, args.huc_12_num, args.com_id_list, args.grid_source), queue="qed")
+        # task_id = self.start_async(args.huc_8_num, args.huc_12_num, args.com_id_num, args.com_id_list)
         return Response(json.dumps({'job_id': task_id.id}))
 
     @celery.task(name='hms_nldas_grid', bind=True)
-    def start_async(self, huc_8_id, huc_12_id, com_id, com_id_list):
+    def start_async(self, huc_8_id, huc_12_id, com_id_list, grid_source):
         task_id = celery.current_task.request.id
         logging.info("task_id: {}".format(task_id))
         logging.info("hms_controller.NLDASGridCells starting calculation...")
-        logging.info("inputs id: {}, {}, {}, {}".format(huc_8_id, huc_12_id, com_id, com_id_list))
-        if huc_8_id and com_id:
-            catchment_cells = CatchmentGrid.getIntersectCellsInCatchment(huc_8_id, com_id)
+        logging.info("inputs id: {}, {}, {}, {}".format(huc_8_id, huc_12_id, com_id_list, grid_source))
+        if huc_8_id:
+            catchment_cells = CatchmentGrid.getIntersectCellsInCatchment(huc_8_id, grid_source)
         elif huc_12_id:
-            catchment_cells = CatchmentGrid.getIntersectCellsInHuc12(huc_12_id)
+            catchment_cells = CatchmentGrid.getIntersectCellsInHuc12(huc_12_id, grid_source)
         elif com_id_list:
-            catchment_cells = CatchmentGrid.getIntersectCellsInComlist(com_id_list)
+            catchment_cells = CatchmentGrid.getIntersectCellsInComlist(com_id_list, grid_source)
         else:
             catchment_cells = {}
         logging.info("hms_controller.NLDASGridCells calcuation completed.")
@@ -217,6 +235,7 @@ class ProxyDNC2(Resource):
     """
 
     """
+
     def post(self, model=None):
         request_url = model + "/"
         request_body = request.json
