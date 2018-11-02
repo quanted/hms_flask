@@ -162,7 +162,7 @@ class NLDASGridCells(Resource):
         logging.info("hms_controller.NLDASGridCells starting calculation...")
         logging.info("inputs id: {}, {}, {}, {}".format(huc_8_id, huc_12_id, com_id_list, grid_source))
         if huc_8_id:
-            catchment_cells = CatchmentGrid.getIntersectCellsInCatchment(huc_8_id, grid_source)
+            catchment_cells = CatchmentGrid.getIntersectCellsInHuc8(huc_8_id, grid_source)
         elif huc_12_id:
             catchment_cells = CatchmentGrid.getIntersectCellsInHuc12(huc_12_id, grid_source)
         elif com_id_list:
@@ -174,7 +174,7 @@ class NLDASGridCells(Resource):
         mongo_db = connect_to_mongoDB()
         posts = mongo_db.posts
         time_stamp = datetime.utcnow()
-        data = {'_id': task_id, 'date': time_stamp, 'data': json.dumps(catchment_cells)}
+        data = {'_id': task_id, 'date': time_stamp, 'data': catchment_cells}
         posts.insert_one(data)
 
 

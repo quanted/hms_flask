@@ -17,26 +17,9 @@ import re
 import os
 
 
-# parser = reqparse.RequestParser()
-# parser.add_argument('huc_8_num')
-# parser.add_argument('huc_12_num')
-# parser.add_argument('lat_long_x')
-# parser.add_argument('lat_long_y')
-# parser.add_argument('filename', location='files', type=FileStorage)
-
-
 class CatchmentGrid:
-    """
-    User sends Catchment ID (CommID) and HUC8 number to get % area of each NLDAS/GLDAS cell covered by the catchment
-    Sample usage:
-    1) http://127.0.0.1:5000/gis/rest/hms/percentage/?huc_12_num=020100050107
-    2) http://127.0.0.1:5000/gis/rest/hms/percentage/?huc_8_num=01060002
-    3) http://127.0.0.1:5000/gis/rest/hms/percentage/?huc_8_num=01060002&com_id_num=9311911
-    6/7) http://127.0.0.1:5000/gis/rest/hms/percentage/?lat_long_x=-83.5&lat_long_y=33.5
-    """
-
     @staticmethod
-    def getIntersectCellsInCatchment(huc_id, grid_source):
+    def getIntersectCellsInHuc8(huc_id, grid_source):
         table = process_huc_8(huc_id, grid_source)
         return json.dumps(table, indent=4, sort_keys=True, default=str)
 
@@ -49,47 +32,6 @@ class CatchmentGrid:
     def getIntersectCellsInComlist(comlist, grid_source):
         table = process_com_list(comlist, grid_source)
         return json.dumps(table, indent=4, sort_keys=True, default=str)
-
-
-# class getPercentArea(Resource):
-#     '''
-# 	User sends Catchment ID (CommID) and HUC8 number to get % area of each NLDAS/GLDAS cell covered by the catchment
-# 	Sample usage:
-# 	1) http://127.0.0.1:5000/gis/rest/hms/percentage/?huc_12_num=020100050107
-# 	2) http://127.0.0.1:5000/gis/rest/hms/percentage/?huc_8_num=01060002
-# 	3) http://127.0.0.1:5000/gis/rest/hms/percentage/?huc_8_num=01060002&com_id_num=9311911
-# 	6/7) http://127.0.0.1:5000/gis/rest/hms/percentage/?lat_long_x=-83.5&lat_long_y=33.5
-# 	'''
-#
-#     def get(self):
-#         args = parser.parse_args()
-#         huc_8_num = args.huc_8_num
-#         huc_12_num = args.huc_12_num
-#         com_id_num = args.com_id_num
-#         latlongx = args.lat_long_x
-#         latlongy = args.lat_long_y
-#         if (huc_8_num):
-#             tab = process_huc_8(huc_8_num, com_id_num)
-#         elif (huc_12_num):
-#             tab = process_huc_12(huc_12_num[0:8])  # Huc12s are catalogued on ftp server by huc8 numbers
-#         elif (latlongx and latlongy):
-#             coord = '(' + latlongx + '+' + latlongy + ')'
-#             tab = process_lat_long(coord)
-#         return jsonify(tab)
-#
-#     '''
-# 	User uploads geojson of a catchment or NHDPlus
-# 	Sample usage:
-# 	4/5) curl -X POST -F 'filename=@file.geojson' http://127.0.0.1:5000/gis/rest/hms/percentage/
-# 	'''
-#
-#     def post(self):
-#         args = parser.parse_args()
-#         if (args.filename is not None):  # Using curl
-#             tab = process_geojson(args.filename.read())
-#         else:
-#             return Response("{'posting error': 'POST operation failed'}")
-#         return jsonify(tab)
 
 
 class GeometryTable():
@@ -141,7 +83,7 @@ def get_grid(grid_source):
     elif (grid_source == 'gldas'):
         return '/GLDAS.geojson'
     elif (grid_source == 'prism'):
-        return '/PRISM.bil'
+        return '/PRISM.geojson'
     elif (grid_source == 'daymet'):
         return '/DAYMET.geojson'
 
@@ -167,23 +109,26 @@ def process_com_list(comlist, grid_source):
 	start = time.time()
 	table = GeometryTable()
 	multi, coms = [], []
+	invalid = ''
 	url = ''
 	for comid in comlist.split(','):
-		sfile = urllib.request.urlopen(
-			'https://ofmpub.epa.gov/waters10/NavigationDelineation.Service?pNavigationType=PP&pStartComid=' + str(
-				comid) + '&pStopComid=' + str(comid)).read()
-		com = re.search(r'([0-9]{2,})', str(sfile))
-		geojson = re.search(r'(?={"type").*(]})', str(sfile))
+		sfile = urllib.request.urlopen('https://watersgeo.epa.gov/arcgis/rest/services/NHDPlus_NP21/Catchments_NP21_Simplified/MapServer/0/query?where=FEATUREID+%3D+' + str(comid) + '&text=&objectIds=&time=&geometry=&geometryType=esriGeometryEnvelope&inSR=&spatialRel=esriSpatialRelIntersects&relationParam=&outFields=FEATUREID&returnGeometry=true&returnTrueCurves=false&maxAllowableOffset=&geometryPrecision=&outSR=&returnIdsOnly=false&returnCountOnly=false&orderByFields=&groupByFieldsForStatistics=&outStatistics=&returnZ=false&returnM=false&gdbVersion=&returnDistinctValues=false&resultOffset=&resultRecordCount=&queryByDistance=&returnExtentsOnly=false&datumTransformation=&parameterValues=&rangeValues=&f=geojson').read()
+		#com = re.search(r'([0-9]{2,})', str(sfile))
+		geojson = re.search(r'(?={"type":"Polygon").*(]})(?=,"properties")', str(sfile))
 		if (geojson != None):
 			coms.append(comid)
-			geo = ogr.CreateGeometryFromJson(geojson.group(0))
+			geo = ogr.CreateGeometryFromJson(str(geojson.group(0)))
 			multi.append(geo)
-	table = readComs(multi, coms)
+		else:
+			invalid += comid + ','
+	gridfile = get_grid(grid_source)
+	table = readComs(multi, coms, gridfile)
 	table['metadata']['execution time'] = time.time() - start
+	table['metadata']['missing catchments'] = invalid
 	return table
 
 
-def process_lat_long(coordinate):
+def process_lat_long(coordinate, gridfile):
     start = time.time()
     table = GeometryTable()
     url = 'https://ofmpub.epa.gov/waters10/SpatialAssignment.Service?pGeometry=POINT' + coordinate + '&pLayer=NHDPLUS_CATCHMENT&pSpatialSnap=TRUE&pReturnGeometry=TRUE'
@@ -192,7 +137,7 @@ def process_lat_long(coordinate):
     com = re.search(r'("[0-9]{2,}")', str(sfile))
     geojson = re.search(r'(?={"type").*(]})', str(sfile))
     comid = com.group(0).replace('"', '')
-    result_table = readGeometry(geojson.group(0), url, comid)
+    result_table = readGeometry(geojson.group(0), url, comid, gridfile)
     table.geometry[comid] = result_table
     table.metadata['request date'] = datetime.datetime.now()
     table.metadata['shapefile source'] = url
@@ -201,10 +146,10 @@ def process_lat_long(coordinate):
     return table.__dict__
 
 
-def readComs(geometries, comlist):
+def readComs(geometries, comlist, gridfile):
 	pa = os.path.dirname(__file__)
-	nldas = ogr.Open(pa + '/NLDAS.geojson')  # To Do: Change to filepath on server
-	nldasLayer = nldas.GetLayer()
+	grid = ogr.Open(pa + gridfile)  # To Do: Change to filepath on server
+	gridLayer = grid.GetLayer()
 	overlap, newpolygons = [], []
 	totalPoly = ogr.Geometry(ogr.wkbMultiPolygon)
 	# Treat all polygons as one larger one since we are just finding overlapping cells
@@ -215,10 +160,7 @@ def readComs(geometries, comlist):
 	if (totalPoly == None):
 		totalPoly = geometries[0].GetGeometryRef()  # latLong
 	# Calculate cells that contain polygons ahead of time to make intersections faster
-	text_file = open("Output.geojson", "w")
-	text_file.write(totalPoly.ExportToJson())
-	text_file.close()
-	for feature in nldasLayer:
+	for feature in gridLayer:
 		cell = feature.GetGeometryRef()
 		if (totalPoly.Intersects(cell)):
 			overlap.append(cell.ExportToJson())
@@ -252,16 +194,16 @@ def readComs(geometries, comlist):
 	return table.__dict__
 
 
-def readGeometry(sfile, url, com):
+def readGeometry(sfile, url, com, gridfile):
 	#start = time.time()
 	shapeFiles = []
 	nldasFiles = []
 	colNames = []
 	shape = ogr.Open(sfile)
 	pa = os.path.dirname(__file__)
-	nldas = ogr.Open(pa + '/NLDAS.geojson')  # To Do: Change to filepath on server
+	grid = ogr.Open(pa + gridfile)  # To Do: Change to filepath on server
+	gridLayer = grid.GetLayer()
 	shapeLayer = shape.GetLayer()
-	nldasLayer = nldas.GetLayer()
 	# Getting features from shapefile
 	colLayer = shape.GetLayer(0).GetLayerDefn()
 	for i in range(colLayer.GetFieldCount()):
@@ -305,7 +247,7 @@ def readGeometry(sfile, url, com):
 	if (totalPoly == None):
 		totalPoly = polygons[0].GetGeometryRef()  # latLong
 	# Calculate cells that contain polygons ahead of time to make intersections faster
-	for feature in nldasLayer:
+	for feature in gridLayer:
 		cell = feature.GetGeometryRef()
 		if (totalPoly.Intersects(cell)):
 			overlap.append(cell.ExportToJson())
@@ -371,9 +313,7 @@ def readHucGeometry(sfile, gridfile, url, com):
 	start = time.time()
 	colNames = []
 	shape = ogr.Open(sfile)
-	#nldas = ogr.Open('NLDAS.geojson')  # To Do: Change to filepath on server
 	shapeLayer = shape.GetLayer()
-	#nldasLayer = nldas.GetLayer()
 	pa = os.path.dirname(__file__)
 	grid = ogr.Open(pa + gridfile)  # To Do: Change to filepath on server
 	gridLayer = grid.GetLayer()
