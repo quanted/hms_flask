@@ -248,7 +248,8 @@ class ProxyDNC2(Resource):
         if task_id is None:
             task_id = uuid.uuid4()
         logging.info("task_id: {}".format(task_id))
-        if os.environ['HMS_LOCAL'] == "True":
+        logging.info("HMS_LOCAL: {}".format(os.environ['HMS_LOCAL']))
+        if os.environ['IN_DOCKER'] == "False":
             proxy_url = "http://localhost:60050/api/" + request_url
         else:
             proxy_url = str(os.environ.get('HMS_BACKEND_SERVER_INTERNAL')) + "/api/" + request_url
