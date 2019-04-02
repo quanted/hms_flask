@@ -75,6 +75,7 @@ class HMSFlaskTest(Resource):
 
     def get(self):
         test_id = self.run_test.apply_async(queue="qed")
+        logging.info("Sending test task to Celery...")
         return Response(json.dumps({'job_id': test_id.id}))
 
     @celery.task(name="hms_flask_test", bind=True)
@@ -207,10 +208,10 @@ class Hydrodynamics(Resource):
                                boundary_flow=args.boundary_flow, segments=args.segments)
             if args.submodel == 'constant_volume':
                 result = data.constant_volume()
-            elif args.submodel == 'changing_volume':
-                result = data.changing_volume()
-            elif args.submodel == 'kinematic_wave':
-                result = data.kinematic_wave()
+            # elif args.submodel == 'changing_volume':
+            #     result = data.changing_volume()
+            # elif args.submodel == 'kinematic_wave':
+            #     result = data.kinematic_wave()
             else:
                 return Response(
                     "{'input error':'invalid model type. Must be constant_volume, changing_volume, or kinematic_wave.'}")
@@ -239,6 +240,7 @@ class ProxyDNC2(Resource):
     def post(self, model=None):
         request_url = model + "/"
         request_body = request.json
+        logging.info("Sending task to celery for: {}".format(request_url))
         job_id = self.request_to_service.apply_async(args=(request_url, request_body), queue="qed")
         return Response(json.dumps({'job_id': job_id.id}))
 
