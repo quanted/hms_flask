@@ -14,6 +14,7 @@ from celery_cgi import celery
 from .hms.ncdc_stations import NCDCStations
 from .hms.percent_area import CatchmentGrid
 from .hms.hydrodynamics import FlowRouting
+from .hms.nwm_data import NWMData
 
 IN_DOCKER = os.environ.get("IN_DOCKER")
 
@@ -136,6 +137,42 @@ class NCDCStationSearch(Resource):
         posts = mongo_db.posts
         time_stamp = datetime.utcnow()
         data = {'_id': task_id, 'date': str(time_stamp), 'data': stations}
+        posts.insert_one(data)
+
+
+class NWMDownload(Resource):
+    """
+    Json or NetCDF Download
+    http://localhost:7777/hms/nwm/data/?dataset=streamflow&comid=6411690&startDate=2010-01-01&endDate=2010-12-31
+    """
+    parser = parser_base.copy()
+    parser.add_argument('dataset')
+    parser.add_argument('comid')
+    parser.add_argument('startDate')
+    parser.add_argument('endDate')
+
+    def get(self):
+        args = self.parser.parse_args()
+        task_id = self.start_async.apply_async(
+            args=(args.dataset, args.comid, args.startDate, args.endDate), queue="qed")
+        return Response(json.dumps({'job_id': task_id.id}))
+
+    @celery.task(name='hms_nwm_data', bind=True)
+    def start_async(self, dataset, comid, startDate, endDate):
+        task_id = celery.current_task.request.id
+        logging.info("task_id: {}".format(task_id))
+        logging.info("hms_controller.NWMDownload starting calculation...")
+        logging.info("inputs id: {}, {}, {}, {}".format(dataset, comid, startDate, endDate))
+        if(endDate):
+            nwm_data = NWMData.JSONData(dataset, comid, startDate, endDate)
+        else:
+            nwm_data = NWMData.NetCDFData(dataset, comid, startDate)
+        logging.info("hms_controller.NWMDownload calcuation completed.")
+        logging.info("Adding data to mongoDB...")
+        mongo_db = connect_to_mongoDB()
+        posts = mongo_db.posts
+        time_stamp = datetime.utcnow()
+        data = {'_id': task_id, 'date': time_stamp, 'data': nwm_data}
         posts.insert_one(data)
 
 
