@@ -16,8 +16,8 @@ from .hms.percent_area import CatchmentGrid
 from .hms.hydrodynamics import FlowRouting
 from .hms.nwm_data import NWMData
 
-IN_DOCKER = os.environ.get("IN_DOCKER")
-
+IN_DOCKER = "False"#os.environ.get("IN_DOCKER")
+NWM_TASK_COUNT = 0
 
 def connect_to_mongoDB(collection=None):
     if collection is None:
@@ -150,21 +150,26 @@ class NWMDownload(Resource):
     parser.add_argument('comid')
     parser.add_argument('startDate')
     parser.add_argument('endDate')
+    parser.add_argument('long')
+    parser.add_argument('lat')
 
     def get(self):
         args = self.parser.parse_args()
         task_id = self.start_async.apply_async(
-            args=(args.dataset, args.comid, args.startDate, args.endDate), queue="qed")
+            args=(args.dataset, args.comid, args.startDate, args.endDate, args.lat, args.long), queue="qed")
         return Response(json.dumps({'job_id': task_id.id}))
 
     @celery.task(name='hms_nwm_data', bind=True)
-    def start_async(self, dataset, comid, startDate, endDate):
+    def start_async(self, dataset, comid, startDate, endDate, lat, long):
         task_id = celery.current_task.request.id
         logging.info("task_id: {}".format(task_id))
         logging.info("hms_controller.NWMDownload starting calculation...")
-        logging.info("inputs id: {}, {}, {}, {}".format(dataset, comid, startDate, endDate))
+        global NWM_TASK_COUNT
+        NWM_TASK_COUNT += 1
+        logging.info("NWM TASK COUNT: " + str(NWM_TASK_COUNT))
+        logging.info("inputs id: {}, {}, {}, {}".format(dataset, comid, startDate, endDate, NWM_TASK_COUNT))
         if(endDate):
-            nwm_data = NWMData.JSONData(dataset, comid, startDate, endDate)
+            nwm_data = NWMData.JSONData(dataset, comid, startDate, endDate, lat, long, NWM_TASK_COUNT)
         else:
             nwm_data = NWMData.NetCDFData(dataset, comid, startDate)
         logging.info("hms_controller.NWMDownload calcuation completed.")
