@@ -16,7 +16,7 @@ from .hms.percent_area import CatchmentGrid
 from .hms.hydrodynamics import FlowRouting
 from .hms.nwm_data import NWMData
 
-IN_DOCKER = "False"#os.environ.get("IN_DOCKER")
+IN_DOCKER = os.environ.get("IN_DOCKER")
 NWM_TASK_COUNT = 0
 
 def connect_to_mongoDB(collection=None):
