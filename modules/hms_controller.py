@@ -19,9 +19,10 @@ from .hms.nwm_data import NWMData
 IN_DOCKER = os.environ.get("IN_DOCKER")
 NWM_TASK_COUNT = 0
 
-def connect_to_mongoDB(collection=None):
-    if collection is None:
-        collection = 'flask_hms'
+
+def connect_to_mongoDB(database=None):
+    if database is None:
+        database = 'flask_hms'
     if IN_DOCKER == "False":
         # Dev env mongoDB
         logging.info("Connecting to mongoDB at: mongodb://localhost:27017/0")
@@ -30,9 +31,9 @@ def connect_to_mongoDB(collection=None):
         # Production env mongoDB
         logging.info("Connecting to mongoDB at: mongodb://mongodb:27017/0")
         mongo = pymongo.MongoClient(host='mongodb://mongodb:27017/0')
-    mongo_db = mongo[collection]
-    if collection is not 'flask_hms':
-        mongo[collection].Collection.create_index([("date", pymongo.DESCENDING)], expireAfterSeconds=604800)
+    mongo_db = mongo[database]
+    if database is not 'flask_hms':
+        mongo[database].Collection.create_index([("date", pymongo.DESCENDING)], expireAfterSeconds=604800)
         # Set expiration to be 1 week
     else:
         mongo.flask_hms.Collection.create_index([("date", pymongo.DESCENDING)], expireAfterSeconds=86400)
@@ -57,17 +58,28 @@ class HMSTaskData(Resource):
         if task_id is not None:
             task = celery.AsyncResult(task_id)
             if task.status == "SUCCESS":
-                mongo_db = connect_to_mongoDB()
-                posts = mongo_db.posts
+                mongo_db = connect_to_mongoDB("hms")
+                posts = mongo_db["data"]
                 posts_data = posts.find_one({'_id': task_id})
                 if not posts_data:
-                    mongo_db = connect_to_mongoDB("hms_data")
-                    posts = mongo_db.posts
-                    posts_data = posts.find_one({'_id': task_id})
+                    mongo_db = connect_to_mongoDB("hms")
+                    db = mongo_db["data"]
+                    posts_data = db.find_one({'_id': task_id})
                 data = json.loads(posts_data['data'])
                 return Response(json.dumps({'id': task.id, 'status': task.status, 'data': data}))
             else:
-                return Response(json.dumps({'id': task.id, 'status': task.status}))
+                try:
+                    mongo_db = connect_to_mongoDB("hms")
+                    db = mongo_db["data"]
+                    posts_data = db.find_one({'_id': task_id})
+                    data = json.loads(posts_data['data'])
+                    if data is not None:
+                        status = "SUCCESS"
+                    else:
+                        status = task.status
+                    return Response(json.dumps({'id': task.id, 'status': status, 'data': data}))
+                except Exception as ex:
+                    return Response(json.dumps({'id': task.id, 'status': task.status}))
         else:
             return Response(json.dumps({'error': 'id provided is invalid.'}))
 
@@ -133,8 +145,8 @@ class NCDCStationSearch(Resource):
             stations = NCDCStations.findStationFromPoint(latitude, longitude, start_date, end_date)
         logging.info("hms_controller.NCDCStationSearch search completed.")
         logging.info("Adding data to mongoDB...")
-        mongo_db = connect_to_mongoDB()
-        posts = mongo_db.posts
+        mongo_db = connect_to_mongoDB("hms")
+        posts = mongo_db["data"]
         time_stamp = datetime.utcnow()
         data = {'_id': task_id, 'date': str(time_stamp), 'data': stations}
         posts.insert_one(data)
@@ -174,8 +186,8 @@ class NWMDownload(Resource):
             nwm_data = NWMData.NetCDFData(dataset, comid, startDate)
         logging.info("hms_controller.NWMDownload calcuation completed.")
         logging.info("Adding data to mongoDB...")
-        mongo_db = connect_to_mongoDB()
-        posts = mongo_db.posts
+        mongo_db = connect_to_mongoDB("hms")
+        posts = mongo_db["data"]
         time_stamp = datetime.utcnow()
         data = {'_id': task_id, 'date': time_stamp, 'data': nwm_data}
         posts.insert_one(data)
@@ -214,8 +226,8 @@ class NLDASGridCells(Resource):
             catchment_cells = {}
         logging.info("hms_controller.NLDASGridCells calcuation completed.")
         logging.info("Adding data to mongoDB...")
-        mongo_db = connect_to_mongoDB()
-        posts = mongo_db.posts
+        mongo_db = connect_to_mongoDB("hms")
+        posts = mongo_db["data"]
         time_stamp = datetime.utcnow()
         data = {'_id': task_id, 'date': time_stamp, 'data': catchment_cells}
         posts.insert_one(data)
@@ -303,8 +315,8 @@ class ProxyDNC2(Resource):
         logging.info("Proxy data recieved from dotnetcore2 container.")
         json_data = json.loads(request_data.text)
         # json_data["metaData"]["job_id"] = task_id
-        mongo_db = connect_to_mongoDB("hms_data")
-        posts = mongo_db.posts
+        mongo_db = connect_to_mongoDB("hms")
+        db = mongo_db["data"]
         time_stamp = datetime.utcnow()
         data = {'_id': task_id, 'date': time_stamp, 'data': json.dumps(json_data)}
-        posts.insert_one(data)
+        db.insert_one(data)

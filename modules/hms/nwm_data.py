@@ -40,6 +40,7 @@ class NWMData:
 		#	header = ''#Replace with a different valid token
 		#logging.info(url)
 		xml = requests.get(url, headers=header)
+		print("NWM Data: " + xml.text)
 		try:
 			root = ET.fromstring(xml.text)
 		except ET.ParseError as e:
@@ -53,7 +54,7 @@ class NWMData:
 		for item in root[1][2]:
 			if ("dateTime" in item.attrib.keys()):
 				date = item.attrib["dateTime"]
-				jsondata[date] = item.text
+				jsondata[date] = [item.text]
 				# CONVERT FROM GMT TO LOCAL TIME
 				#utc = datetime.datetime.strptime(date, "%Y-%m-%dT%H:%M:%S")
 				#utc = utc.replace(tzinfo=from_zone)
