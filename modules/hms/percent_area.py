@@ -157,7 +157,7 @@ def readComs(geometries, comlist, gridfile):
 		totalPoly.AddGeometry(polygon)
 		newpolygons.append(polygon.ExportToJson())
 	totalPoly = totalPoly.UnionCascaded()
-	if (totalPoly == None):
+	if totalPoly == None:
 		totalPoly = geometries[0].GetGeometryRef()  # latLong
 	# Calculate cells that contain polygons ahead of time to make intersections faster
 	for feature in gridLayer:
@@ -165,7 +165,7 @@ def readComs(geometries, comlist, gridfile):
 		if (totalPoly.Intersects(cell)):
 			overlap.append(cell.ExportToJson())
 	table = GeometryTable()
-	i = 0;
+	i = 0
 	num_points = 0
 	for polygon in newpolygons:
 		obj, np = calculations(polygon, overlap)

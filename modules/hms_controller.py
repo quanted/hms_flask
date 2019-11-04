@@ -65,7 +65,7 @@ class HMSTaskData(Resource):
                     mongo_db = connect_to_mongoDB("hms")
                     db = mongo_db["data"]
                     posts_data = db.find_one({'_id': task_id})
-                data = json.loads(posts_data['data'])
+                data = json.loads(json.dumps(posts_data['data']))
                 return Response(json.dumps({'id': task.id, 'status': task.status, 'data': data}))
             else:
                 try:
