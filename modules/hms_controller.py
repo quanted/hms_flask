@@ -296,6 +296,7 @@ class ProxyDNC2(Resource):
         request_body = request.json
         logging.info("Sending task to celery for: {}".format(request_url))
         job_id = self.request_to_service.apply_async(args=(request_url, request_body), queue="qed")
+        # job_id = self.request_to_service(args=(request_url, request_body), queue="qed")
         return Response(json.dumps({'job_id': job_id.id}))
 
     @celery.task(name='hms_dotnetcore2_request', bind=True)
