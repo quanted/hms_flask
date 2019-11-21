@@ -47,7 +47,8 @@ class NWMForecastData:
                 self.datestamp = datestamp
             else:
                 self.check_count += 1
-
+                temp_date = self.current_datetime + timedelta(days=-1)
+                datestamp = str(temp_date.year) + str(temp_date.month) + str(temp_date.day)
         if not check_dir:
             self.status = "ERROR: Error locating nwm data directory."
         else:
