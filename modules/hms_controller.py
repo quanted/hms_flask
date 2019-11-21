@@ -15,6 +15,7 @@ from .hms.ncdc_stations import NCDCStations
 from .hms.percent_area import CatchmentGrid
 from .hms.hydrodynamics import FlowRouting
 from .hms.nwm_data import NWMData
+from .hms.nwm_forecast import NWMForecastData
 
 IN_DOCKER = os.environ.get("IN_DOCKER")
 NWM_TASK_COUNT = 0
@@ -32,13 +33,14 @@ def connect_to_mongoDB(database=None):
         logging.info("Connecting to mongoDB at: mongodb://mongodb:27017/0")
         mongo = pymongo.MongoClient(host='mongodb://mongodb:27017/0')
     mongo_db = mongo[database]
-    if database is not 'flask_hms':
+    if database is 'flask_hms':
+        mongo.flask_hms.Collection.create_index([("date", pymongo.DESCENDING)], expireAfterSeconds=86400)
+        # ALL entries into mongo.flask_hms must have datetime.utcnow() timestamp, which is used to delete the record after 86400 seconds, 24 hours.
+    elif database is 'nwm_data':
+        mongo.nwm_data.Collection.create_index([("date", pymongo.DESCENDING)], expireAfterSeconds=64800)    # 18 hr
+    else:
         mongo[database].Collection.create_index([("date", pymongo.DESCENDING)], expireAfterSeconds=604800)
         # Set expiration to be 1 week
-    else:
-        mongo.flask_hms.Collection.create_index([("date", pymongo.DESCENDING)], expireAfterSeconds=86400)
-        # ALL entries into mongo.flask_hms must have datetime.utcnow() timestamp, which is used to delete the record after 86400
-    # seconds, 24 hours.
     return mongo_db
 
 
@@ -321,4 +323,36 @@ class ProxyDNC2(Resource):
         db = mongo_db["data"]
         time_stamp = datetime.utcnow()
         data = {'_id': task_id, 'date': time_stamp, 'data': json.dumps(json_data)}
+        db.insert_one(data)
+
+
+class NWMDataShortTerm(Resource):
+    """
+    NWM Data retriever
+    """
+    # parser = parser_base.copy()
+    # parser.add_argument('comid')
+
+    def get(self, comid=None):
+        # args = self.parser.parse_args()
+        comid = int(comid)
+        if comid is None:
+            return Response(json.dumps({'ERROR': 'comid value does not exist or is invalid. COMID: {}'.format(comid)}))
+        job_id = self.get_data.apply_async(args=(comid,), queue="qed")
+        return Response(json.dumps({'job_id': job_id.id}))
+
+    @celery.task(name="nwm data - short term request", bind=True)
+    def get_data(self, comid):
+        job_id = celery.current_task.request.id
+        if job_id is None:
+            job_id = uuid.uuid4()
+        logging.info("NWM short term forecast data call started. ID: {}".format(job_id))
+        nwm = NWMForecastData()
+        nwm.download_data()
+        logging.info("NWM short term forecast data call completed. ID: {}".format(job_id))
+        json_data = nwm.generate_timeseries(comid)
+        mongo_db = connect_to_mongoDB("hms")
+        db = mongo_db["data"]
+        time_stamp = datetime.utcnow()
+        data = {'_id': job_id, 'date': time_stamp, 'data': json_data}
         db.insert_one(data)
