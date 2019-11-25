@@ -131,7 +131,7 @@ class NWMForecastData:
             feature_ids = np.array(self.data[t].variables['feature_id'][:])
             comid_i = np.where(feature_ids == int(comid))[0]
             if comid_i is None:
-                return "ERROR: Unable to find comid, comdi: {}".format(comid)
+                return "ERROR: Unable to find comid, comid: {}".format(comid)
             date = datetime.fromtimestamp((self.data[t].variables['time'][:])[0] * 60)
             streamflow = np.array(self.data[t].variables['streamflow'][:])[comid_i][0]
             velocity = np.array(self.data[t].variables["velocity"][:])[comid_i][0]
