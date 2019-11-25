@@ -138,7 +138,7 @@ class NWMForecastData:
             tr_runoff = np.array(self.data[t].variables["qSfcLatRunoff"][:])[comid_i][0]
             bucket = np.array(self.data[t].variables["qBucket"][:])[comid_i][0]
             bt_runoff = np.array(self.data[t].variables["qBtmVertRunoff"][:])[comid_i][0]
-            timeseries[date.strftime("%Y-%m-%d %H")] = [streamflow, velocity, tr_runoff, bucket, bt_runoff]
+            timeseries[date.strftime("%Y-%m-%d %H")] = [str(streamflow), str(velocity), str(tr_runoff), str(bucket), str(bt_runoff)]
             timestep += 1
 
         date_details = self.data["01"].variables['time'][:]
