@@ -330,29 +330,39 @@ class NWMDataShortTerm(Resource):
     """
     NWM Data retriever
     """
-    # parser = parser_base.copy()
-    # parser.add_argument('comid')
+    parser = parser_base.copy()
+    parser.add_argument('comid')
+    parser.add_argument('simdate')
 
-    def get(self, comid=None):
-        # args = self.parser.parse_args()
-        comid = int(comid)
-        if comid is None:
+    def get(self):
+        args = self.parser.parse_args()
+        comid = [int(c) for c in str(args.comid).split(",")]
+        if comid is None or len(comid) == 0:
             return Response(json.dumps({'ERROR': 'comid value does not exist or is invalid. COMID: {}'.format(comid)}))
-        job_id = self.get_data.apply_async(args=(comid,), queue="qed")
+        dt_format = "%Y-%m-%d:%H"
+        dt = args.simdate
+        if dt is None:
+            dt = datetime.now().strftime("%Y-%m-%d %H")
+        else:
+            dt = datetime.strptime(dt, dt_format).strftime("%Y-%m-%d %H")
+        job_id = self.get_data.apply_async(args=(comid, dt,), queue="qed")
         return Response(json.dumps({'job_id': job_id.id}))
 
     @celery.task(name="nwm data - short term request", bind=True)
-    def get_data(self, comid):
+    def get_data(self, comid, dt):
         job_id = celery.current_task.request.id
         if job_id is None:
             job_id = uuid.uuid4()
         logging.info("NWM short term forecast data call started. ID: {}".format(job_id))
-        nwm = NWMForecastData()
+        nwm = NWMForecastData(dt=dt)
         nwm.download_data()
-        logging.info("NWM short term forecast data call completed. ID: {}".format(job_id))
-        json_data = nwm.generate_timeseries(comid)
+        comid_data = {}
+        for c in comid:
+            json_data = nwm.generate_timeseries(c)
+            comid_data[str(c)] = json_data
         mongo_db = connect_to_mongoDB("hms")
         db = mongo_db["data"]
         time_stamp = datetime.utcnow()
-        data = {'_id': job_id, 'date': time_stamp, 'data': json_data}
+        data = {'_id': job_id, 'date': time_stamp, 'data': comid_data}
         db.insert_one(data)
+        logging.info("NWM short term forecast data call completed. ID: {}".format(job_id))

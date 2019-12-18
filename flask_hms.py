@@ -46,8 +46,8 @@ api.add_resource(hms_controller.Hydrodynamics, '/hydrodynamic/constant_volume/')
 logging.info(base_url + "/nwm/data/")
 api.add_resource(hms_controller.NWMDownload, '/nwm/data/')
 
-logging.info(base_url + "/nwm/forecast/short_term/<path:comid>/")
-api.add_resource(hms_controller.NWMDataShortTerm, "/nwm/forecast/short_term/<path:comid>/")
+logging.info(base_url + "/nwm/forecast/short_term")
+api.add_resource(hms_controller.NWMDataShortTerm, "/nwm/forecast/short_term")
 
 #logging.info(base_url + "/hydrodynamics/constant_volume/")
 #api.add_resource(hms_controller.Hydrodynamics.constant_volume, '/hydrodynamics/constant_volume/')

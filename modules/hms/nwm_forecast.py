@@ -1,6 +1,6 @@
 """
 file: nwm_forecast_data.py
-date: 11/20/2019
+date: 12/17/2019
 description: Downloads NWM short term forecast data for channel routing (default), and assembles data into a timeseries
 for a specified NHDPlus catchment COMID.
 """
@@ -9,6 +9,7 @@ import numpy as np
 import requests
 import json
 import time
+import copy
 from datetime import datetime, timedelta
 
 
@@ -16,12 +17,14 @@ class NWMForecastData:
     """
     Class to determine latest NWM forecast directory and time.
     """
-    def __init__(self, dataset="channel_rt", dtype="short_range"):
+    def __init__(self, dt=None, dataset="channel_rt", dtype="short_range"):
         self.base_url = "https://nomads.ncep.noaa.gov/pub/data/nccf/com/nwm/prod/nwm."
+        self.sim_date = datetime.now() if dt is None else datetime.strptime(dt, "%Y-%m-%d %H")
+        self.set_time = False if dt is None else True
         self.dataset = dataset
         self.dtype = dtype
         self.date_counter = 0
-        self.current_datetime = datetime.now()
+        self.current_datetime = copy.copy(self.sim_date)
         self.datestamp = None
         self.check_count = 0
         self.check_count_threshold = 5
@@ -31,7 +34,6 @@ class NWMForecastData:
         self.status = ""
         self.timerstart = None
         self.timerstop = None
-        self.current_datetime = self.current_datetime + timedelta(days=1)           # To account for the overlap between server location (datetime.now and GMT)
 
     def download_data(self):
         """
@@ -52,7 +54,7 @@ class NWMForecastData:
         if not check_dir:
             self.status = "ERROR: Error locating nwm data directory."
         else:
-            t = 23
+            t = self.sim_date.hour if self.set_time else 23
             check_hour = False
             while not check_hour and t >= 0:
                 check_hour = self.get_file(t, 1)
@@ -132,26 +134,35 @@ class NWMForecastData:
             comid_i = np.where(feature_ids == int(comid))[0]
             if comid_i is None:
                 return "ERROR: Unable to find comid, comid: {}".format(comid)
-            date = datetime.fromtimestamp((self.data[t].variables['time'][:])[0] * 60)
+            # date = datetime.fromtimestamp((self.data[t].variables['time'][:])[0] * 60)
+            date = datetime.strptime(self.data[t].model_output_valid_time, "%Y-%m-%d_%H:%M:%S")
             streamflow = np.array(self.data[t].variables['streamflow'][:])[comid_i][0]
             velocity = np.array(self.data[t].variables["velocity"][:])[comid_i][0]
             tr_runoff = np.array(self.data[t].variables["qSfcLatRunoff"][:])[comid_i][0]
             bucket = np.array(self.data[t].variables["qBucket"][:])[comid_i][0]
             bt_runoff = np.array(self.data[t].variables["qBtmVertRunoff"][:])[comid_i][0]
-            timeseries[date.strftime("%Y-%m-%d %H")] = [str(streamflow), str(velocity), str(tr_runoff), str(bucket), str(bt_runoff)]
+            timeseries[date.strftime("%Y-%m-%d %H")] = [streamflow, velocity, tr_runoff, bucket, bt_runoff]
             timestep += 1
 
-        date_details = self.data["01"].variables['time'][:]
-        ldate_details = self.data[str(len(self.data))].variables['time'][:]
+        # date_details = self.data["01"].variables['time'][:]
+        date_ref = self.data["01"].model_output_valid_time
+        # ldate_details = self.data[str(len(self.data))].variables['time'][:]
+        date_ref2 = self.data[str(len(self.data))].model_output_valid_time
         streamflow_details = self.data["01"].variables['streamflow']
         velocity_details = self.data["01"].variables['velocity']
         tr_runoff_details = self.data["01"].variables["qSfcLatRunoff"]
         bucket_details = self.data["01"].variables["qBucket"]
         bt_runoff_details = self.data["01"].variables["qBtmVertRunoff"]
+
+        date_start = datetime.strptime(date_ref, "%Y-%m-%d_%H:%M:%S")
+        date_end = datetime.strptime(date_ref2, "%Y-%m-%d_%H:%M:%S")
+
         metadata = {
-            "startdate": datetime.fromtimestamp(date_details[0] * 60).strftime("%Y-%m-%d %H"),
-            "enddate": datetime.fromtimestamp(ldate_details[0] * 60).strftime("%Y-%m-%d %H"),
-            "timezone": "GMT",
+            # "startdate": datetime.fromtimestamp(date_details[0] * 60).strftime("%Y-%m-%d %H"),
+            # "enddate": datetime.fromtimestamp(ldate_details[0] * 60).strftime("%Y-%m-%d %H"),
+            "startdate": date_start.strftime("%Y-%m-%d %H"),
+            "enddate": date_end.strftime("%Y-%m-%d %H"),
+            "timezone": "UTC",
             "comid": str(comid),
             "column_1": streamflow_details.name,
             "column_1_name": streamflow_details.long_name,
@@ -168,9 +179,9 @@ class NWMForecastData:
             "column_5": bt_runoff_details.name,
             "column_5_name": bt_runoff_details.long_name,
             "column_5_units": bt_runoff_details.units,
-            "retrieval_time": datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+            "retrieval_time": datetime.now().strftime("%Y/%m/%d %H:%M:%S") + " secs"
         }
         self.timerstop = time.time()
-        metadata["retrieval_time_elapse"] = str(self.timerstop - self.timerstart) + " secs"
+        metadata["retrieval_time_elapse"] = str(self.timerstop - self.timerstart)
         self.timeseries_data = {"data": timeseries, "metadata": metadata}
         return json.dumps(self.timeseries_data)
