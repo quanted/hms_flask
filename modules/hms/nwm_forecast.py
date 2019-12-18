@@ -110,7 +110,7 @@ class NWMForecastData:
         request_url = self.base_url + self.datestamp + "/" + self.dtype + "/nwm.t{}z.short_range.".format(t) + self.dataset + ".f0{}.conus.nc".format(f)
         file_check = requests.get(request_url)
         if file_check.status_code == 200:
-            self.data[f] = netCDF4.Dataset("inmemory.nc", mode='r', diskless=True, memory=bytes(file_check.content))
+            self.data[f] = netCDF4.Dataset("inmemory.nc", memory=bytes(file_check.content))
             return True
         else:
             return False
