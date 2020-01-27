@@ -41,7 +41,7 @@ class NWMForecastData:
         :return:
         """
         self.timerstart = time.time()
-        datestamp = str(self.current_datetime.year) + str(self.current_datetime.month) + str(self.current_datetime.day)
+        datestamp = str(self.current_datetime.year) + NWMForecastData.format_date(self.current_datetime.month) + NWMForecastData.format_date(self.current_datetime.day)
         check_dir = False
         while not check_dir and self.check_count < self.check_count_threshold:
             check_dir = self.check_directory(datestamp)
@@ -50,7 +50,7 @@ class NWMForecastData:
             else:
                 self.check_count += 1
                 temp_date = self.current_datetime + timedelta(days=-1)
-                datestamp = str(temp_date.year) + str(temp_date.month) + str(temp_date.day)
+                datestamp = str(temp_date.year) + NWMForecastData.format_date(temp_date.month) + NWMForecastData.format_date(temp_date.day)
         if not check_dir:
             self.status = "ERROR: Error locating nwm data directory."
         else:
@@ -97,6 +97,10 @@ class NWMForecastData:
             return True
         else:
             return False
+
+    @staticmethod
+    def format_date(d):
+        return str(d) if d > 10 else "0{}".format(d)
 
     def get_file(self, t, f):
         """
