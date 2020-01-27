@@ -322,7 +322,7 @@ class ProxyDNC2(Resource):
         mongo_db = connect_to_mongoDB("hms")
         db = mongo_db["data"]
         time_stamp = datetime.utcnow()
-        data = {'_id': task_id, 'date': time_stamp, 'data': json.dumps(json_data)}
+        data = {'_id': task_id, 'date': time_stamp, 'data': json_data}
         db.insert_one(data)
 
 
