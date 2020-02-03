@@ -25,7 +25,7 @@ class NCDCStations:
         try:
             stations = getStations(extent, startDate, endDate)
             intersect_stations = stationsInGeometry(geojson['features'], stations)
-            return json.dumps(intersect_stations)
+            return intersect_stations
         except Exception as ex:
             return "{'station collection error': 'Error attempting to collect stations from NCDC.'}"
 
@@ -49,7 +49,7 @@ class NCDCStations:
                 i = i + 1
             elif len(stations["results"]) >= 1:
                 stations_list = orderStations(stations, lat, lng)
-                return json.dumps(stations_list)
+                return stations_list
             else:
                 i = i + 1
         return "{'stationNotFoundError': 'No stations were found within one deg of Point({} {})'}".format(lng, lat)

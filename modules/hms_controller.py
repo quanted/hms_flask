@@ -147,6 +147,7 @@ class NCDCStationSearch(Resource):
             stations = NCDCStations.findStationFromPoint(latitude, longitude, start_date, end_date)
         logging.info("hms_controller.NCDCStationSearch search completed.")
         logging.info("Adding data to mongoDB...")
+        logging.info("Search data: {}".format(stations))
         mongo_db = connect_to_mongoDB("hms")
         posts = mongo_db["data"]
         time_stamp = datetime.utcnow()
@@ -322,7 +323,7 @@ class ProxyDNC2(Resource):
         mongo_db = connect_to_mongoDB("hms")
         db = mongo_db["data"]
         time_stamp = datetime.utcnow()
-        data = {'_id': task_id, 'date': time_stamp, 'data': json_data}
+        data = {'_id': task_id, 'date': time_stamp, 'data': json.dumps(json_data)}
         db.insert_one(data)
 
 
