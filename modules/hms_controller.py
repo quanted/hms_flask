@@ -63,11 +63,11 @@ class HMSTaskData(Resource):
                 mongo_db = connect_to_mongoDB("hms")
                 posts = mongo_db["data"]
                 posts_data = posts.find_one({'_id': task_id})
-                if not posts_data:
-                    mongo_db = connect_to_mongoDB("hms")
-                    db = mongo_db["data"]
-                    posts_data = db.find_one({'_id': task_id})
-                data = json.loads(json.dumps(posts_data['data']))
+                if posts_data is None:
+                    data = None
+                    print("No data for mongodb: hms, posts: data, id: {}".format(task_id))
+                else:
+                    data = json.loads(json.dumps(posts_data['data']))
                 return Response(json.dumps({'id': task.id, 'status': task.status, 'data': data}))
             else:
                 try:
