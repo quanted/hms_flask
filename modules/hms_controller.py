@@ -293,7 +293,6 @@ class ProxyDNC2(Resource):
     """
 
     """
-
     def post(self, model=None):
         request_url = model + "/"
         request_body = request.json
