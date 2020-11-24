@@ -4,7 +4,7 @@ import os
 import logging
 
 # Import modules
-from hms_flask.modules import hms_controller
+from hms_flask.modules import hms_controller, hms_data
 
 app = Flask(__name__)
 app.config.update(
@@ -32,6 +32,7 @@ api.add_resource(hms_controller.HMSFlaskTest, '/gis/test/')
 # HMS endpoints
 # Data retrieval endpoint
 api.add_resource(hms_controller.HMSTaskData, '/data')
+
 logging.info(base_url + "/gis/ncdc/stations/")
 api.add_resource(hms_controller.NCDCStationSearch, '/gis/ncdc/stations/')
 logging.info(base_url + "/gis/percentage/")
@@ -45,9 +46,11 @@ api.add_resource(hms_controller.Hydrodynamics, '/hydrodynamic/constant_volume/')
 
 logging.info(base_url + "/nwm/data/")
 api.add_resource(hms_controller.NWMDownload, '/nwm/data/')
-
 logging.info(base_url + "/nwm/forecast/short_term")
 api.add_resource(hms_controller.NWMDataShortTerm, "/nwm/forecast/short_term")
+
+logging.info(base_url + "/data/curvenumber/")
+api.add_resource(hms_data.HMSCurveNumberData, "/data/curvenumber/")
 
 #logging.info(base_url + "/hydrodynamics/constant_volume/")
 #api.add_resource(hms_controller.Hydrodynamics.constant_volume, '/hydrodynamics/constant_volume/')
