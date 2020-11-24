@@ -51,7 +51,9 @@ class HMSCurveNumberData(Resource):
             "temporal-resolution": "16 days",
             "time-span": "01-01-2001 to 12-31-2017",
             "request-time": timestamp,
-
+            "algorithm-link": "placeholder-url",
+            "publication-link": "placeholder-url",
+            "metadata-link": "placeholder-url"
         }
         response_data["metadata"] = metadata
         return Response(response_data, status=200)
