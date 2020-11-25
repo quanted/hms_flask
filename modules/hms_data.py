@@ -5,6 +5,8 @@ import datetime
 
 cn_db = "/src/hms-data/curvenumber.sqlite"
 
+parser_base = reqparse.RequestParser()
+
 
 def get_db_connection():
     """
