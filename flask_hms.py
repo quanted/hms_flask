@@ -4,7 +4,7 @@ import os
 import logging
 
 # Import modules
-from hms_flask.modules import hms_controller, hms_data
+from hms_flask.modules import hms_controller
 
 app = Flask(__name__)
 app.config.update(
@@ -49,8 +49,8 @@ api.add_resource(hms_controller.NWMDownload, '/nwm/data/')
 logging.info(base_url + "/nwm/forecast/short_term")
 api.add_resource(hms_controller.NWMDataShortTerm, "/nwm/forecast/short_term")
 
-logging.info(base_url + "/data/curvenumber/")
-api.add_resource(hms_data.HMSCurveNumberData, "/data/curvenumber/")
+#logging.info(base_url + "/data/curvenumber/")
+#api.add_resource(hms_data.HMSCurveNumberData, "/data/curvenumber/")
 
 #logging.info(base_url + "/hydrodynamics/constant_volume/")
 #api.add_resource(hms_controller.Hydrodynamics.constant_volume, '/hydrodynamics/constant_volume/')
