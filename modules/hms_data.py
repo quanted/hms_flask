@@ -7,6 +7,8 @@ cn_db = "/src/hms-data/curvenumber.sqlite"
 
 parser_base = reqparse.RequestParser()
 
+cn_start_date = datetime.date(2001, 1, 1)
+
 
 def get_db_connection():
     """
@@ -37,7 +39,12 @@ class HMSCurveNumberData(Resource):
         c = conn.cursor()
         query = "SELECT * FROM CurveNumber WHERE ComID=?"
         c.execute(query, (comid,))
-        cn_avg = c.fetchone()
+        d0 = copy.copy(cn_start_date)
+        cn_avg = {}
+        for c in c.fetchone():
+            _d = d0.isoformat()
+            cn_avg[_d] = c
+            d0 = d0 + datetime.timedelta(days=16)
         response_data = {
             "CN-AVG": cn_avg
         }
