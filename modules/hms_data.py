@@ -43,9 +43,9 @@ class HMSCurveNumberData(Resource):
             "CN-AVG": cn_avg
         }
         if type == "both":
-            query = "SELECT * FROM CurveNumberRaw WHERE ComID=?"
+            query = "SELECT CN FROM CurveNumberRaw WHERE ComID=? ORDER BY TimeStep ASC"
             c.execute(query, (comid,))
-            cn_raw = c.fetchall()
+            cn_raw = [float(i[0]) for i in c.fetchall()]
             response_data["CN-RAW"] = cn_raw
 
         timestamp = datetime.datetime.timestamp(datetime.datetime.now())
