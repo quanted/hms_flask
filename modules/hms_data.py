@@ -65,8 +65,7 @@ class HMSCurveNumberData(Resource):
                 cn_raw[_d] = round(i[0], 4)
                 d0 = d0 + datetime.timedelta(days=16)
                 if d1 != d0.year:
-                    d0.day = 1
-                    d0.month = 1
+                    d0 = datetime.date(d0.year, 1, 1)
                     d1 = d0.year
 
             response_data["CN-RAW"] = cn_raw
