@@ -67,7 +67,8 @@ class HMSCurveNumberData(Resource):
                 if d1 != d0.year:
                     d0 = datetime.date(d0.year, 1, 1)
                     d1 = d0.year
-
+            if "2018-01-01" in cn_raw.keys():
+                del cn_raw["2018-01-01"]
             response_data["CN-RAW"] = cn_raw
 
         timestamp = datetime.datetime.now()
