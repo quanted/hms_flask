@@ -43,7 +43,7 @@ class HMSCurveNumberData(Resource):
             "CN-AVG": cn_avg
         }
         if type == "both":
-            query = "SELECT * CurveNumberRaw Where ComID=?"
+            query = "SELECT * FROM CurveNumberRaw WHERE ComID=?"
             c.execute(query, (comid,))
             cn_raw = c.fetchall()
             response_data["CN-RAW"] = cn_raw
