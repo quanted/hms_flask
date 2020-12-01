@@ -47,7 +47,7 @@ class HMSCurveNumberData(Resource):
         cn_avg_f = {}
         d0 = copy.copy(cn_start_date)
         for i in cn_avg:
-            _d = d0.isoformat()
+            _d = "{} {}".format(d0.strftime('%B'), d0.day)
             cn_avg_f[_d] = i
             d0 = d0 + datetime.timedelta(days=16)
 
