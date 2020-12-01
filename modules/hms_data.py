@@ -2,6 +2,7 @@ from flask import Response
 from flask_restful import Resource, reqparse, request
 import sqlite3
 import datetime
+import json
 
 cn_db = "/src/hms-data/curvenumber.sqlite3"
 
@@ -58,4 +59,4 @@ class HMSCurveNumberData(Resource):
             "metadata-link": "placeholder-url"
         }
         response_data["metadata"] = metadata
-        return Response(response_data, status=200)
+        return Response(json.dumps(response_data), status=200)
