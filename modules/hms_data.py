@@ -38,7 +38,9 @@ class HMSCurveNumberData(Resource):
         c = conn.cursor()
         query = "SELECT * FROM CurveNumber WHERE ComID=?"
         c.execute(query, (comid,))
-        cn_avg = c.fetchone()
+        cn_avg = list(c.fetchone())
+        if len(cn_avg) > 0:
+            cn_avg.pop(0)
         response_data = {
             "CN-AVG": cn_avg
         }
