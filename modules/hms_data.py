@@ -48,7 +48,7 @@ class HMSCurveNumberData(Resource):
             cn_raw = [float(i[0]) for i in c.fetchall()]
             response_data["CN-RAW"] = cn_raw
 
-        timestamp = datetime.datetime.timestamp(datetime.datetime.now())
+        timestamp = datetime.datetime.now()
         metadata = {
             "comid": comid,
             "temporal-resolution": "16 days",
