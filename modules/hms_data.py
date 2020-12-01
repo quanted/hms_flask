@@ -3,7 +3,7 @@ from flask_restful import Resource, reqparse, request
 import sqlite3
 import datetime
 
-cn_db = "/src/hms-data/curvenumber.sqlite"
+cn_db = "/src/hms-data/curvenumber.sqlite3"
 
 parser_base = reqparse.RequestParser()
 
