@@ -53,7 +53,7 @@ class HMSCurveNumberData(Resource):
             "comid": comid,
             "temporal-resolution": "16 days",
             "time-span": "01-01-2001 to 12-31-2017",
-            "request-time": timestamp,
+            "request-time": str(timestamp),
             "algorithm-link": "placeholder-url",
             "publication-link": "placeholder-url",
             "metadata-link": "placeholder-url"
