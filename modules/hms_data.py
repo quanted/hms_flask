@@ -61,7 +61,7 @@ class HMSCurveNumberData(Resource):
             d0 = copy.copy(cn_start_date)
             for i in c.fetchall():
                 _d = d0.isoformat()
-                cn_raw[_d] = i
+                cn_raw[_d] = round(i[0], 4)
                 d0 = d0 + datetime.timedelta(days=16)
             response_data["CN-RAW"] = cn_raw
 
