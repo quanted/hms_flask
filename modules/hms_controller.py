@@ -2,6 +2,7 @@ from flask import Response
 from flask_restful import Resource, reqparse, request
 import pymongo as pymongo
 from datetime import datetime
+import time
 import uuid
 import requests
 import logging
@@ -14,6 +15,7 @@ from celery_cgi import celery
 from .hms.ncdc_stations import NCDCStations
 from .hms.percent_area import CatchmentGrid
 from .hms.hydrodynamics import FlowRouting
+from .hms.nwm_reanalysis import NWM
 from .hms.nwm_data import NWMData
 from .hms.nwm_forecast import NWMForecastData
 
@@ -74,7 +76,12 @@ class HMSTaskData(Resource):
                     mongo_db = connect_to_mongoDB("hms")
                     db = mongo_db["data"]
                     posts_data = db.find_one({'_id': task_id})
-                    data = json.loads(posts_data['data'])
+                    if isinstance(posts_data['data'], str):
+                        data = json.loads(posts_data['data'])
+                    elif isinstance(posts_data['data'], dict):
+                        data = posts_data['data']
+                    else:
+                        data = None
                     if data is not None:
                         status = "SUCCESS"
                     else:
@@ -165,34 +172,44 @@ class NWMDownload(Resource):
     parser.add_argument('comid')
     parser.add_argument('startDate')
     parser.add_argument('endDate')
-    parser.add_argument('long')
-    parser.add_argument('lat')
+    parser.add_argument('timestep')
 
     def get(self):
         args = self.parser.parse_args()
         task_id = self.start_async.apply_async(
-            args=(args.dataset, args.comid, args.startDate, args.endDate, args.lat, args.long), queue="qed")
+            args=(args.dataset, args.comid, args.startDate, args.endDate, args.timestep), queue="qed")
         return Response(json.dumps({'job_id': task_id.id}))
 
+        # task_id = str(uuid.uuid4())
+        # self.start_async(args.dataset, args.comid, args.startDate, args.endDate, uuid=task_id)
+        # return Response(json.dumps({'job_id': task_id}))
+
     @celery.task(name='hms_nwm_data', bind=True)
-    def start_async(self, dataset, comid, startDate, endDate, lat, long):
-        task_id = celery.current_task.request.id
-        logging.info("task_id: {}".format(task_id))
-        logging.info("hms_controller.NWMDownload starting calculation...")
-        global NWM_TASK_COUNT
-        NWM_TASK_COUNT += 1
-        logging.info("NWM TASK COUNT: " + str(NWM_TASK_COUNT))
-        logging.info("inputs id: {}, {}, {}, {}".format(dataset, comid, startDate, endDate, NWM_TASK_COUNT))
-        if(endDate):
-            nwm_data = NWMData.JSONData(dataset, comid, startDate, endDate, lat, long, NWM_TASK_COUNT)
+    def start_async(self, dataset, comid, startDate, endDate, uuid=None):
+        if uuid:
+            task_id = uuid
         else:
-            nwm_data = NWMData.NetCDFData(dataset, comid, startDate)
-        logging.info("hms_controller.NWMDownload calcuation completed.")
+            task_id = celery.current_task.request.id
+        comids = comid.split(",")
+        logging.info("task_id: {}".format(task_id))
+        logging.info("hms_controller.NWM download starting...")
+        logging.info("inputs id: {}, {}, {}, {}".format(dataset, comids, startDate, endDate))
+        time0 = time.time()
+        try:
+            nwm = NWM(start_date=startDate, end_date=endDate, comids=comids)
+            nwm.request_timeseries()
+            nwm.set_output()
+        except Exception as e:
+            logging.warning(f"Error attempting to retrieve NWM data: {e}")
+            return
+        time1 = time.time()
+        logging.info("NWM timeseries runtime: {} sec ".format((round(time1-time0, 4))))
+        logging.info("hms_controller.NWM download completed.")
         logging.info("Adding data to mongoDB...")
         mongo_db = connect_to_mongoDB("hms")
         posts = mongo_db["data"]
         time_stamp = datetime.utcnow()
-        data = {'_id': task_id, 'date': time_stamp, 'data': nwm_data}
+        data = {'_id': task_id, 'date': time_stamp, 'data': nwm.output.to_dict()}
         posts.insert_one(data)
 
 
