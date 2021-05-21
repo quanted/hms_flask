@@ -52,6 +52,12 @@ api.add_resource(hms_controller.NWMDataShortTerm, "/nwm/forecast/short_term")
 logging.info(base_url + "/data/curvenumber/")
 api.add_resource(hms_data.HMSCurveNumberData, "/data/curvenumber/")
 
+logging.info(base_url + "/workflow/")
+api.add_resource(hms_controller.HMSWorkflow, "/workflow/")
+logging.info(base_url + "/workflow/status/")
+api.add_resource(hms_controller.HMSWorkflow.Status, "/workflow/status/")
+logging.info(base_url + "/workflow/data/")
+api.add_resource(hms_controller.HMSWorkflow.Data, "/workflow/data/")
 #logging.info(base_url + "/hydrodynamics/constant_volume/")
 #api.add_resource(hms_controller.Hydrodynamics.constant_volume, '/hydrodynamics/constant_volume/')
 

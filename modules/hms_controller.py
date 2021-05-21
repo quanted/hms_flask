@@ -18,6 +18,7 @@ from .hms.hydrodynamics import FlowRouting
 from .hms.nwm_reanalysis import NWM
 from .hms.nwm_data import NWMData
 from .hms.nwm_forecast import NWMForecastData
+from .hms.workflow_manager import WorkflowManager, MongoWorkflow
 
 IN_DOCKER = os.environ.get("IN_DOCKER")
 NWM_TASK_COUNT = 0
@@ -384,3 +385,54 @@ class NWMDataShortTerm(Resource):
         data = {'_id': job_id, 'date': time_stamp, 'data': comid_data}
         db.insert_one(data)
         logging.info("NWM short term forecast data call completed. ID: {}".format(job_id))
+
+
+class HMSWorkflow(Resource):
+    """
+    HMS WorkflowManager
+    """
+    parser = parser_base.copy()
+    parser.add_argument('sim_input', type=dict)
+    parser.add_argument('comid_inputs', type=dict)
+    parser.add_argument('network', type=dict)
+    parser.add_argument("simulation_dependencies", type=dict)
+    parser.add_argument("catchment_dependencies", type=dict)
+
+    def post(self):
+        args = self.parser.parse_args()
+        sim_id = str(uuid.uuid4())
+        output = self.execute_workflow.apply_async(args=(sim_id, args.sim_input, args.comid_inputs, args.network,
+                                                         args.simulation_dependencies, args.catchment_dependencies),
+                                                   task_id=sim_id, queue='qed')
+        return Response(json.dumps({'job_id': sim_id}))
+
+    @celery.task(name="HMS Workflow Manager", bind=True)
+    def execute_workflow(self, task_id, sim_input, comid_inputs, network, simulation_dependencies, catchment_dependencies):
+        debug = True
+        local = False
+        logging.debug("Starting HMS WorkflowManager. ID: {}".format(task_id))
+        workflow = WorkflowManager(task_id=task_id, sim_input=sim_input,
+                                   order=network["order"], sources=network["sources"],
+                                   local=local, debug=debug)
+        workflow.define_presim_dependencies(simulation_dependencies)
+        workflow.construct(catchment_inputs=comid_inputs, catchment_dependencies=catchment_dependencies)
+        workflow.compute()
+        logging.debug("HMS WorkflowManager simulation completed. ID: {}".format(task_id))
+
+    class Status(Resource):
+        parser = parser_base.copy()
+        parser.add_argument("task_id", location='args')
+
+        def get(self):
+            args = self.parser.parse_args()
+            status = MongoWorkflow.get_status(task_id=args.task_id)
+            return status
+
+    class Data(Resource):
+        parser = parser_base.copy()
+        parser.add_argument("task_id", location='args')
+
+        def get(self):
+            args = self.parser.parse_args()
+            data = MongoWorkflow.get_data(task_id=args.task_id)
+            return data
