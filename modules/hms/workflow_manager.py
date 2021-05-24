@@ -232,7 +232,7 @@ class WorkflowManager:
                 client = Client(self.scheduler)
                 logging.debug(f"Dask Client connected to new local cluster at {self.scheduler}")
         else:
-            scheduler = os.getenv('DASK_SCHEDULER', "127.0.0.1:8786")
+            self.scheduler = os.getenv('DASK_SCHEDULER', "127.0.0.1:8786")
             logging.info(f"Dask Client connecting to existing cluster at {self.scheduler}")
             client = Client(self.scheduler)
         self.task_id = task_id
