@@ -395,7 +395,7 @@ class HMSWorkflow(Resource):
     parser.add_argument('sim_input', type=dict)
     parser.add_argument('comid_inputs', type=dict)
     parser.add_argument('network', type=dict)
-    parser.add_argument("simulation_dependencies", type=list)
+    parser.add_argument("simulation_dependencies")
     parser.add_argument("catchment_dependencies", type=dict)
 
     def post(self):
@@ -414,11 +414,7 @@ class HMSWorkflow(Resource):
         workflow = WorkflowManager(task_id=task_id, sim_input=sim_input,
                                    order=network["order"], sources=network["sources"],
                                    local=local, debug=debug)
-        # if isinstance(simulation_dependencies, str):
-        #     simulation_dependencies = json.loads(simulation_dependencies)
         workflow.define_presim_dependencies(simulation_dependencies)
-        # if isinstance(catchment_dependencies, str):
-        #     catchment_dependencies = json.loads(catchment_dependencies)
         workflow.construct(catchment_inputs=comid_inputs, catchment_dependencies=catchment_dependencies)
         workflow.compute()
         logging.debug("HMS WorkflowManager simulation completed. ID: {}".format(task_id))
