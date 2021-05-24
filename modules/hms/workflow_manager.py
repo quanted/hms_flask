@@ -246,7 +246,7 @@ class WorkflowManager:
         self.pre_sim_tasks = {}
         self.pre_sim_ids = {}
 
-    def define_presim_dependencies(self, dependencies: list):
+    def define_presim_dependencies(self, dependencies):
         for dep in dependencies:
             task_id = str(uuid.uuid4())
             if self.debug:
