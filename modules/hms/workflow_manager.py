@@ -249,10 +249,10 @@ class WorkflowManager:
     def define_presim_dependencies(self, dependencies):
         if isinstance(dependencies, str):
             deps = []
-            dependencies = json.loads(dependencies)
+            dependencies = json.loads(dependencies.replace("\'", "\""))
             # for dep in dependencies:
             #     deps.append(json.loads(dep))
-            dependencies = deps
+            # dependencies = deps
             print(f"CAT TYPE: {type(dependencies)}")
         for dep in dependencies:
             task_id = str(uuid.uuid4())

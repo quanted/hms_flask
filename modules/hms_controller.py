@@ -399,10 +399,17 @@ class HMSWorkflow(Resource):
     parser.add_argument("catchment_dependencies", type=dict)
 
     def post(self):
-        args = self.parser.parse_args()
+        #args = self.parser.parse_args()
+        json_data = request.get_json(force=True)
+       	sim_input = json_data["sim_input"]
+        comid_inputs = json_data["comid_inputs"]
+        network = json_data["network"]
+        simulation_dependencies = json_data["simulation_dependencies"]
+        catchment_dependencies = json_data["catchment_dependencies"]
+
         sim_id = str(uuid.uuid4())
-        output = self.execute_workflow.apply_async(args=(sim_id, args.sim_input, args.comid_inputs, args.network,
-                                                         args.simulation_dependencies, args.catchment_dependencies),
+        output = self.execute_workflow.apply_async(args=(sim_id, sim_input, comid_inputs, network,
+                                                         simulation_dependencies, catchment_dependencies),
                                                    task_id=sim_id, queue='qed')
         return Response(json.dumps({'job_id': sim_id}))
 
@@ -414,6 +421,7 @@ class HMSWorkflow(Resource):
         workflow = WorkflowManager(task_id=task_id, sim_input=sim_input,
                                    order=network["order"], sources=network["sources"],
                                    local=local, debug=debug)
+        print(f"SIM DEP TYPE: {type(simulation_dependencies)}, SIM DEP: {simulation_dependencies}")
         workflow.define_presim_dependencies(simulation_dependencies)
         workflow.construct(catchment_inputs=comid_inputs, catchment_dependencies=catchment_dependencies)
         workflow.compute()
