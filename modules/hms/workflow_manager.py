@@ -247,6 +247,13 @@ class WorkflowManager:
         self.pre_sim_ids = {}
 
     def define_presim_dependencies(self, dependencies):
+        if isinstance(dependencies, str):
+            deps = []
+            dependencies = json.loads(dependencies)
+            # for dep in dependencies:
+            #     deps.append(json.loads(dep))
+            dependencies = deps
+            print(f"CAT TYPE: {type(dependencies)}")
         for dep in dependencies:
             task_id = str(uuid.uuid4())
             if self.debug:
