@@ -249,6 +249,8 @@ class WorkflowManager:
     def define_presim_dependencies(self, dependencies: list):
         for dep in dependencies:
             task_id = str(uuid.uuid4())
+            if self.debug:
+                print(f"Simulation Dependency: {dep}")
             presim_task = dask.delayed(WorkflowManager.execute_dependency)(task_id, dep["name"], dep["url"],
                                                                            dep["input"], self.debug,
                                                                            dask_key_name=f"{dep['name']}_{task_id}")
