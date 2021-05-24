@@ -414,6 +414,13 @@ class HMSWorkflow(Resource):
         workflow = WorkflowManager(task_id=task_id, sim_input=sim_input,
                                    order=network["order"], sources=network["sources"],
                                    local=local, debug=debug)
+        if isinstance(catchment_dependencies, str):
+            cat_deps = []
+            catchment_dependencies = json.loads(catchment_dependencies)
+            for deps in catchment_dependencies:
+                cat_deps.append(json.loads(deps))
+            catchment_dependencies = cat_deps
+            print(f"CAT TYPE: {type(catchment_dependencies)}")
         workflow.define_presim_dependencies(simulation_dependencies)
         workflow.construct(catchment_inputs=comid_inputs, catchment_dependencies=catchment_dependencies)
         workflow.compute()
