@@ -36,4 +36,5 @@ secret.py
 .pytest_cache
 data/
 .dirlock
-modules/hms/dask-worker-space
+modules/hms/dask-worker-space/
+modules/hms/.ipynb_checkpoints/
