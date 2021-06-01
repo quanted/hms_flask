@@ -35,3 +35,5 @@ REST_UBER/sam_rest/bin/ubertool_superprzm_src/*
 secret.py
 .pytest_cache
 data/
+.dirlock
+modules/hms/dask-worker-space
