@@ -415,7 +415,7 @@ class HMSWorkflow(Resource):
 
     @celery.task(name="HMS Workflow Manager", bind=True)
     def execute_workflow(self, task_id, sim_input, comid_inputs, network, simulation_dependencies, catchment_dependencies):
-        debug = True
+        debug = False
         local = False
         logging.debug("Starting HMS WorkflowManager. ID: {}".format(task_id))
         workflow = WorkflowManager(task_id=task_id, sim_input=sim_input,
