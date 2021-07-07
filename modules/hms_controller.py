@@ -36,10 +36,10 @@ def connect_to_mongoDB(database=None):
         logging.info("Connecting to mongoDB at: mongodb://mongodb:27017/0")
         mongo = pymongo.MongoClient(host='mongodb://mongodb:27017/0')
     mongo_db = mongo[database]
-    if database is 'flask_hms':
+    if database == 'flask_hms':
         mongo.flask_hms.Collection.create_index([("date", pymongo.DESCENDING)], expireAfterSeconds=86400)
         # ALL entries into mongo.flask_hms must have datetime.utcnow() timestamp, which is used to delete the record after 86400 seconds, 24 hours.
-    elif database is 'nwm_data':
+    elif database == 'nwm_data':
         mongo.nwm_data.Collection.create_index([("date", pymongo.DESCENDING)], expireAfterSeconds=64800)    # 18 hr
     else:
         mongo[database].Collection.create_index([("date", pymongo.DESCENDING)], expireAfterSeconds=604800)
@@ -273,7 +273,7 @@ class Hydrodynamics(Resource):
         if args.startDate is None or args.endDate is None:
             return Response("{'input error':'Arguments startDate and endDate are required.")
         if use_celery:
-            if args.submodel is 'constant_volume':
+            if args.submodel == 'constant_volume':
                 job_id = self.CV_start_async.apply_async(
                     args=(args.startDate, args.endDate, args.timestep, args.boundary_flow, args.segments),
                     queue="qed")  # DO STUFF with args, validation
@@ -399,9 +399,8 @@ class HMSWorkflow(Resource):
     parser.add_argument("catchment_dependencies", type=dict)
 
     def post(self):
-        #args = self.parser.parse_args()
         json_data = request.get_json(force=True)
-       	sim_input = json_data["sim_input"]
+        sim_input = json_data["sim_input"]
         comid_inputs = json_data["comid_inputs"]
         network = json_data["network"]
         simulation_dependencies = json_data["simulation_dependencies"]
@@ -426,6 +425,72 @@ class HMSWorkflow(Resource):
         workflow.construct(catchment_inputs=comid_inputs, catchment_dependencies=catchment_dependencies)
         workflow.compute()
         logging.debug("HMS WorkflowManager simulation completed. ID: {}".format(task_id))
+
+    class Simulation(Resource):
+        parser = parser_base.copy()
+        parser.add_argument('sim_id', type=str)
+        parser.add_argument('comid_input', type=dict)
+        parser.add_argument('network', type=dict)
+        parser.add_argument("simulation_dependencies")
+        parser.add_argument("catchment_dependencies", type=list)
+
+        def post(self):
+            args = self.parser.parse_args()
+            if args.sim_id:
+                sim_id = args.sim_id
+            else:
+                sim_id = str(uuid.uuid4())
+            if args.network:
+                sim_deps = None
+                if args.simulation_dependencies:
+                    sim_deps = args.simulation_dependencies
+                WorkflowManager.create_simulation(
+                    sim_taskid=sim_id,
+                    simulation_dependencies=sim_deps,
+                    network=args.network)
+            valid = 1
+            cat_id = None
+            if args.comid_input:
+                cat_deps = None
+                if args.catchment_dependencies:
+                    cat_deps = args.catchment_dependencies
+                valid, cat_id = WorkflowManager.create_catchment(
+                    sim_taskid=sim_id,
+                    catchment_input=args.comid_input["input"],
+                    comid=args.comid_input["comid"],
+                    dependencies=cat_deps
+                )
+            if valid == 1:
+                return MongoWorkflow.get_status(task_id=sim_id)
+            else:
+                return Response({"error": cat_id})
+
+        def get(self):
+            args = self.parser.parse_args()
+            if args.sim_id:
+                valid, msg = MongoWorkflow.simulation_run_ready(task_id=args.sim_id)
+                if valid == 0:
+                    return Response({"error", msg})
+                else:
+                    self.execute_workflow.apply_async(args=(args.sim_id), task_id=args.sim_id, queue='qed')
+                    return MongoWorkflow.get_status(task_id=args.sim_id)
+            else:
+                return Response({"error": "No simulation taskid provided."})
+
+        @celery.task(name="HMS Workflow Manager", bind=True)
+        def execute_workflow(self, task_id):
+            logging.debug("Starting HMS WorkflowManager. ID: {}".format(task_id))
+            valid, workflow = WorkflowManager.load(sim_taskid=task_id)
+            if valid == 0:
+                MongoWorkflow.update_simulation_entry(simulation_id=task_id, status="FAILED", message=workflow)
+            else:
+                simulation_entry = MongoWorkflow.get_entry(task_id=task_id)
+                simulation_dependencies = simulation_entry["dependencies"]
+                print(f"SIM DEP TYPE: {type(simulation_dependencies)}, SIM DEP: {simulation_dependencies}")
+                workflow.define_presim_dependencies(simulation_dependencies)
+                workflow.construct_from_db(catchment_ids=simulation_entry["catchments"])
+                workflow.compute()
+                logging.debug("HMS WorkflowManager simulation completed. ID: {}".format(task_id))
 
     class Status(Resource):
         parser = parser_base.copy()
