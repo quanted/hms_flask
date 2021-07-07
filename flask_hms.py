@@ -58,6 +58,8 @@ logging.info(base_url + "/workflow/status/")
 api.add_resource(hms_controller.HMSWorkflow.Status, "/workflow/status/")
 logging.info(base_url + "/workflow/data/")
 api.add_resource(hms_controller.HMSWorkflow.Data, "/workflow/data/")
+logging.info(base_url + "/workflow/compute/")
+api.add_resource(hms_controller.HMSWorkflow.Simulation, "/workflow/compute/")
 #logging.info(base_url + "/hydrodynamics/constant_volume/")
 #api.add_resource(hms_controller.Hydrodynamics.constant_volume, '/hydrodynamics/constant_volume/')
 

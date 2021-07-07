@@ -13,7 +13,7 @@ class NCDCStations:
     def findStationsInGeoJson(geojson, startDate=None, endDate=None, crs=None):
         logging.info("HMS Celery task: searching for NCDC Stations with geojson bounds. process starting...")
         geometry = geo.GeoDataFrame.from_features(geojson)
-        if crs is not None and crs is not "4326":
+        if crs is not None and crs != "4326":
             # geometry.crs = from_epsg(crs)
             geometry.crs = {'init': 'epsg:' + str(crs), 'no_defs': True}
             geometry = geometry.to_crs({'init': 'epsg:326'})
