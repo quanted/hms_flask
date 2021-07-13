@@ -427,70 +427,78 @@ class HMSWorkflow(Resource):
         logging.debug("HMS WorkflowManager simulation completed. ID: {}".format(task_id))
 
     class Simulation(Resource):
-        parser = parser_base.copy()
-        parser.add_argument('sim_id', type=str)
-        parser.add_argument('comid_input', type=dict)
-        parser.add_argument('network', type=dict)
-        parser.add_argument("simulation_dependencies")
-        parser.add_argument("catchment_dependencies", type=list)
+        sim_parser = parser_base.copy()
+        sim_parser.add_argument('sim_id', type=str)
+        sim_parser.add_argument('comid_input', type=dict)
+        sim_parser.add_argument('network', type=dict)
+        sim_parser.add_argument("simulation_dependencies", type=list)
+        sim_parser.add_argument("catchment_dependencies", type=list)
 
         def post(self):
-            args = self.parser.parse_args()
-            if args.sim_id:
-                sim_id = args.sim_id
+            args = request.get_json(force=True)
+            new_sim = False
+            if 'sim_id' in args.keys():
+                sim_id = args['sim_id']
             else:
+                new_sim = True
                 sim_id = str(uuid.uuid4())
-            if args.network:
+            if 'network' in args.keys():
                 sim_deps = None
-                if args.simulation_dependencies:
-                    sim_deps = args.simulation_dependencies
+                if 'simulation_dependencies' in args.keys():
+                    sim_deps = args['simulation_dependencies']
                 WorkflowManager.create_simulation(
                     sim_taskid=sim_id,
                     simulation_dependencies=sim_deps,
-                    network=args.network)
+                    network=args['network'])
+                print(f"New simulation created with id: {sim_id}")
+            elif new_sim:
+                return Response(json.dumps({"error": "A network must be provided with a new simulation."}))
             valid = 1
             cat_id = None
-            if args.comid_input:
+            if 'comid_input' in args:
                 cat_deps = None
-                if args.catchment_dependencies:
-                    cat_deps = args.catchment_dependencies
+                if 'catchment_dependencies' in args:
+                    cat_deps = args['catchment_dependencies']
                 valid, cat_id = WorkflowManager.create_catchment(
                     sim_taskid=sim_id,
-                    catchment_input=args.comid_input["input"],
-                    comid=args.comid_input["comid"],
+                    catchment_input=args['comid_input']["input"],
+                    comid=args['comid_input']["comid"],
                     dependencies=cat_deps
                 )
+                print(f"New catchment added to simulation: {sim_id}, COMID: {args['comid_input']['comid']}")
             if valid == 1:
                 return MongoWorkflow.get_status(task_id=sim_id)
             else:
-                return Response({"error": cat_id})
+                return Response(json.dumps({"error": cat_id}))
 
         def get(self):
-            args = self.parser.parse_args()
+            args = self.sim_parser.parse_args()
             if args.sim_id:
-                valid, msg = MongoWorkflow.simulation_run_ready(task_id=args.sim_id)
+                sim_id = str(args.sim_id)
+                valid, msg = MongoWorkflow.simulation_run_ready(task_id=sim_id)
                 if valid == 0:
-                    return Response({"error", msg})
+                    return Response(json.dumps({"error": str(msg)}))
                 else:
-                    self.execute_workflow.apply_async(args=(args.sim_id), task_id=args.sim_id, queue='qed')
-                    return MongoWorkflow.get_status(task_id=args.sim_id)
+                    print(f"Executing HMS workflow simulation with ID: {sim_id}")
+                    MongoWorkflow.set_sim_status(task_id=sim_id, status="PENDING")
+                    output = self.execute_sim_workflow.apply_async(args=(sim_id,), task_id=sim_id, queue='qed')
+                    return MongoWorkflow.get_status(task_id=sim_id)
             else:
-                return Response({"error": "No simulation taskid provided."})
+                return Response(json.dumps({"error": "No simulation taskid provided. Requires argument 'sim_id'"}))
 
-        @celery.task(name="HMS Workflow Manager", bind=True)
-        def execute_workflow(self, task_id):
-            logging.debug("Starting HMS WorkflowManager. ID: {}".format(task_id))
+        @celery.task(name="HMS Sim Workflow Manager", bind=True)
+        def execute_sim_workflow(self, task_id):
+            logging.info("Starting HMS WorkflowManager. ID: {}".format(task_id))
             valid, workflow = WorkflowManager.load(sim_taskid=task_id)
             if valid == 0:
                 MongoWorkflow.update_simulation_entry(simulation_id=task_id, status="FAILED", message=workflow)
             else:
                 simulation_entry = MongoWorkflow.get_entry(task_id=task_id)
                 simulation_dependencies = simulation_entry["dependencies"]
-                print(f"SIM DEP TYPE: {type(simulation_dependencies)}, SIM DEP: {simulation_dependencies}")
                 workflow.define_presim_dependencies(simulation_dependencies)
                 workflow.construct_from_db(catchment_ids=simulation_entry["catchments"])
                 workflow.compute()
-                logging.debug("HMS WorkflowManager simulation completed. ID: {}".format(task_id))
+                logging.info("HMS WorkflowManager simulation completed. ID: {}".format(task_id))
 
     class Status(Resource):
         parser = parser_base.copy()
@@ -504,8 +512,14 @@ class HMSWorkflow(Resource):
     class Data(Resource):
         parser = parser_base.copy()
         parser.add_argument("task_id", location='args')
+        parser.add_argument("input", type=bool, default=False)
+        parser.add_argument("output", type=bool, default=False)
 
         def get(self):
             args = self.parser.parse_args()
             data = MongoWorkflow.get_data(task_id=args.task_id)
+            if not args.input:
+                del data["input"]
+            if not args.output:
+                del data["output"]
             return data

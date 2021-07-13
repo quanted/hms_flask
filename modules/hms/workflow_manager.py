@@ -50,6 +50,8 @@ class MongoWorkflow:
         data = posts.find_one(query)
         if data is not None:
             posts.delete_one(query)
+        if catchments is None:
+            catchments = {}
         time_stamp = str(datetime.datetime.utcnow())
         data = {
             "_id": simulation_id,
@@ -115,6 +117,7 @@ class MongoWorkflow:
 
     @staticmethod
     def add_catchment(simulation_id: str, catchment_id: str, comid: str):
+        print(f"Add Catchment: sim_id: {simulation_id}, cat_id: {catchment_id}, COMID: {comid}")
         timestamp = datetime.datetime.now().isoformat(' ')
         mongo = MongoWorkflow.connect_to_mongodb()
         mongo_db = MongoWorkflow.get_collection(mongo)
@@ -158,18 +161,13 @@ class MongoWorkflow:
         mongo = MongoWorkflow.connect_to_mongodb()
         mongo_db = MongoWorkflow.get_collection(mongo)
         posts = mongo_db["data"]
-        query = {'_id': simulation_id}
         c_query = {'_id': catchment_id}
-        simulation_entry = posts.find_one(query)
         catchment_entry = posts.find_one(c_query)
         valid = True
         message = []
-        if len(catchment_inputs) > 0:
-            complete_inputs = {**json.loads(simulation_entry["input"]), **catchment_inputs}
-        elif len(simulation_entry) > 0:
-            complete_inputs = json.loads(simulation_entry["input"])
-        else:
-            complete_inputs = json.loads(catchment_entry["input"])
+        if catchment_entry is None:
+            print(f"Catchment entry doesn't exist for id {catchment_id}")
+        complete_inputs = json.loads(catchment_entry["input"])
         if not upstream:
             mongo.close()
             return complete_inputs, valid, ", ".join(message)
@@ -261,6 +259,7 @@ class MongoWorkflow:
     @staticmethod
     def dump_data(task_id: str, url: str, data, name: str, request_input: dict, data_type: str = "dependency"):
         timestamp = datetime.datetime.now().isoformat(' ')
+        exists = MongoWorkflow.get_entry(task_id=task_id)
         mongo = MongoWorkflow.connect_to_mongodb()
         mongo_db = MongoWorkflow.get_collection(mongo)
         posts = mongo_db["data"]
@@ -275,7 +274,10 @@ class MongoWorkflow:
             "hash": hash,
             "timestamp": timestamp,
         }
-        posts.insert_one(data)
+        if exists:
+            posts.replace_one({"_id": task_id}, data)
+        else:
+            posts.insert_one(data)
         mongo.close()
 
     @staticmethod
@@ -287,7 +289,11 @@ class MongoWorkflow:
         exists = posts.find_one({"hash": hash})
         mongo.close()
         if exists:
-            return exists["_id"]
+            if "metadata" in exists["output"].keys():
+                if "error" in exists["output"]["metadata"].keys() or "ERROR" in exists["output"]["metadata"].keys():
+                    return None
+            else:
+                return exists["_id"]
         return None
 
     @staticmethod
@@ -325,6 +331,26 @@ class MongoWorkflow:
                 return 0, f"Simulation contains catchments with no provided inputs. COMIDS: {', '.join(notready_comids)}"
         else:
             return 0, f"task_id is not of type workflow, task_id type: {data['type']}"
+
+    @staticmethod
+    def set_sim_status(task_id, status: str = "PENDING"):
+        mongo = MongoWorkflow.connect_to_mongodb()
+        mongo_db = MongoWorkflow.get_collection(mongo)
+        posts = mongo_db["data"]
+        query = {'_id': task_id}
+        data = posts.find_one(query)
+        if data is None:
+            return
+        if data["type"] == "catchment":
+            data["status"] = status
+            data["message"] = None
+        elif data["type"] == "workflow":
+            for comid, catchment_id in data["catchments"].items():
+                MongoWorkflow.set_sim_status(task_id=catchment_id, status=status)
+            data["status"] = status
+            data["message"] = None
+        posts.replace_one({"_id": task_id}, data)
+        mongo.close()
 
 
 class WorkflowManager:
@@ -421,10 +447,12 @@ class WorkflowManager:
                     if presim_check:
                         cat_task = None
                         task_id = presim_check["_id"]
+                        print(f"Using data from existing dependency task for COMID: {catchment}, NAME: {dep['name']}, ID: {task_id}")
                     else:
                         cat_task = dask.delayed(WorkflowManager.execute_dependency)(task_id, dep["name"], dep["url"],
                                                                                     cat_input, self.debug,
                                                                                     dask_key_name=f"{dep['name']}_{task_id}")
+                        print(f"Created new dependency task for COMID: {catchment}, NAME: {dep['name']}, ID: {task_id}")
                     cat_dependencies[dep["name"]] = cat_task
                     cat_d_ids[dep["name"]] = task_id
                     cat_d_ids_only[dep["name"]] = task_id
@@ -469,15 +497,32 @@ class WorkflowManager:
                         pcomid = str(c).split("_")
                         upstream_ids[pcomid[0]] = pcomid[1]
                 cat_d_ids_only = {}
-                for dep in catchment_dependencies[catchment]:
-                    task_id = str(uuid.uuid4())
-                    cat_input = dep["input"]
-                    presim_check = MongoWorkflow.check_hash(dep["url"], cat_input)
-                    if presim_check:
-                        cat_task = None
-                        task_id = presim_check["_id"]
+                if type(catchment_dependencies) == dict:
+                    list_catchment = []
+                    for k, v in catchment_dependencies.items():
+                        list_catchment.append({"name": k, "taskID": v})
+                    catchment_dependencies = list_catchment
+                for dep in catchment_dependencies:
+                    new_task = False
+                    if "input" not in dep:         # TaskID has been given to the dep, object in db
+                        cat_entry = MongoWorkflow.get_entry(task_id=dep["taskID"])
+                        cat_input = cat_entry["input"]
+                        dep_url = cat_entry["url"]
+                        task_id = dep["taskID"]
+                        if cat_entry["output"] is None:
+                            new_task = True
                     else:
-                        cat_task = dask.delayed(WorkflowManager.execute_dependency)(task_id, dep["name"], dep["url"],
+                        new_task = True
+                        task_id = str(uuid.uuid4())
+                        cat_input = dep["input"]
+                        dep_url = dep["url"]
+                    presim_check = MongoWorkflow.check_hash(dep_url, cat_input)
+                    if presim_check and not new_task:
+                        print(f"PRESIM: {presim_check}")
+                        cat_task = None
+                        task_id = presim_check
+                    else:
+                        cat_task = dask.delayed(WorkflowManager.execute_dependency)(task_id, dep["name"], dep_url,
                                                                                     cat_input, self.debug,
                                                                                     dask_key_name=f"{dep['name']}_{task_id}")
                     cat_dependencies[dep["name"]] = cat_task
@@ -513,11 +558,13 @@ class WorkflowManager:
                 time.sleep(10)
                 data = request_input
             else:
+                print(f"Executing dependency task: {task_id}")
                 dep_data = requests.post(request_url, json=request_input)
                 data = json.loads(dep_data.text)
         except Exception as e:
             data = {"error": f"e002: {str(e)}"}
         MongoWorkflow.dump_data(task_id=task_id, url=url, request_input=request_input, data=data, name=name)
+        print(f"Completed dependency task: {task_id}")
 
     @staticmethod
     @dask.delayed
@@ -528,25 +575,20 @@ class WorkflowManager:
         MongoWorkflow.update_catchment_entry(catchment_id, status="IN-PROGRESS")
         catchment_entry = MongoWorkflow.get_entry(task_id=catchment_id)
         catchment_input = json.loads(catchment_entry["input"])
-        full_input = None
-        message = None
         try:
             full_input, valid, message = MongoWorkflow.prepare_inputs(simulation_id=simulation_id,
+                                                                      catchment_id=catchment_id,
                                                                       catchment_inputs=catchment_input,
                                                                       upstream=upstream_ids)
         except Exception as e:
+            logging.warning(f"Error: e003, message: {e}")
             valid = False
             message = f"e003: {e}"
         if valid:
             output = None
             try:
-                complete_input = {
-                    "input": full_input,
-                    "upstream": upstream_ids,
-                    "data_sources": {},
-                    "dependencies": dependency_ids
-                }
-                output = WorkflowManager.submit_request(complete_input, debug)
+                print(f"Executing catchment task: {catchment_id}")
+                output = WorkflowManager.submit_request(catchment_id, debug)
                 try:
                     output = json.loads(output)
                     status = ""
@@ -573,15 +615,16 @@ class WorkflowManager:
             MongoWorkflow.update_catchment_entry(catchment_id=catchment_id, status="FAILED", message=message)
         status, sim_message = MongoWorkflow.completion_check(simulation_id=simulation_id)
         MongoWorkflow.update_simulation_entry(simulation_id=simulation_id, status=status, message=message)
+        print(f"Completed catchment task: {catchment_id}")
 
     @staticmethod
-    def submit_request(request_input: dict, debug: bool = False):
+    def submit_request(catchment_taskid: str, debug: bool = False):
         if debug:
             time.sleep(10)
-            return request_input
+            return "{'test':'test'}"
         workflow_url = "api/aquatox/workflow"
         request_url = str(os.getenv('HMS_BACKEND_SERVER_INTERNAL', "http://localhost:60550/")) + workflow_url
-        data = requests.post(request_url, json=request_input, timeout=timeout)
+        data = requests.get(request_url, params={'task_id': catchment_taskid}, timeout=timeout)
         return data.text
 
     @staticmethod
