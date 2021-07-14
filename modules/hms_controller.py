@@ -446,6 +446,10 @@ class HMSWorkflow(Resource):
                 sim_deps = None
                 if 'simulation_dependencies' in args.keys():
                     sim_deps = args['simulation_dependencies']
+                if not new_sim:
+                    check_sim = MongoWorkflow.get_entry(task_id=sim_id)
+                    if check_sim["status"] == "IN-PROGRESS":
+                        return Response(json.dumps({"error": "Unable to modify a currently running simulation."}))
                 WorkflowManager.create_simulation(
                     sim_taskid=sim_id,
                     simulation_dependencies=sim_deps,
@@ -483,6 +487,18 @@ class HMSWorkflow(Resource):
                     MongoWorkflow.set_sim_status(task_id=sim_id, status="PENDING")
                     output = self.execute_sim_workflow.apply_async(args=(sim_id,), task_id=sim_id, queue='qed')
                     return MongoWorkflow.get_status(task_id=sim_id)
+            else:
+                return Response(json.dumps({"error": "No simulation taskid provided. Requires argument 'sim_id'"}))
+
+        def delete(self):
+            args = self.sim_parser.parse_args()
+            if args.sim_id:
+                sim_id = str(args.sim_id)
+                check_sim = MongoWorkflow.get_entry(task_id=sim_id)
+                if check_sim:
+                    if check_sim["type"] == "workflow" and check_sim["status"] in ("PENDING", "IN-PROGRESS",):
+                        MongoWorkflow.kill_simulation(sim_id=sim_id)
+                return MongoWorkflow.get_status(task_id=sim_id)
             else:
                 return Response(json.dumps({"error": "No simulation taskid provided. Requires argument 'sim_id'"}))
 

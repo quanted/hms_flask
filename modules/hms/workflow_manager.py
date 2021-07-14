@@ -289,11 +289,15 @@ class MongoWorkflow:
         exists = posts.find_one({"hash": hash})
         mongo.close()
         if exists:
-            if "metadata" in exists["output"].keys():
+            if "metadata" in exists["output"].keys():       # If there is a reported error in the metadata
                 if "error" in exists["output"]["metadata"].keys() or "ERROR" in exists["output"]["metadata"].keys():
                     return None
+            if "data" in exists["output"].keys():           # If there is no data in the response
+                if len(exists["output"]["data"]) == 0:
+                    return None
             else:
-                return exists["_id"]
+                return None
+            return exists["_id"]
         return None
 
     @staticmethod
@@ -350,6 +354,25 @@ class MongoWorkflow:
             data["status"] = status
             data["message"] = None
         posts.replace_one({"_id": task_id}, data)
+        mongo.close()
+
+    @staticmethod
+    def kill_simulation(sim_id: str):
+        mongo = MongoWorkflow.connect_to_mongodb()
+        mongo_db = MongoWorkflow.get_collection(mongo)
+        posts = mongo_db["data"]
+        query = {'_id': sim_id}
+        sim_entry = posts.find_one(query)
+        if sim_entry:
+            if sim_entry["type"] == "workflow":
+                pourpoint = str(list(sim_entry["catchment_sources"].keys())[-1])
+                pourpoint_id = sim_entry["catchments"][pourpoint]
+
+                client = Client("dask-scheduler:8786", timeout=2)
+
+                pourpoint_future = dask.distributed.Future(key=pourpoint_id, client=client)
+                pourpoint_future.cancel()
+            MongoWorkflow.set_sim_status(task_id=sim_id, status="CANCELLED")
         mongo.close()
 
 
@@ -505,26 +528,29 @@ class WorkflowManager:
                 for dep in catchment_dependencies:
                     new_task = False
                     if "input" not in dep:         # TaskID has been given to the dep, object in db
-                        cat_entry = MongoWorkflow.get_entry(task_id=dep["taskID"])
-                        cat_input = cat_entry["input"]
-                        dep_url = cat_entry["url"]
+                        dep_entry = MongoWorkflow.get_entry(task_id=dep["taskID"])
+                        dep_input = dep_entry["input"]
+                        dep_url = dep_entry["url"]
                         task_id = dep["taskID"]
-                        if cat_entry["output"] is None:
+                        if dep_entry["output"] is None:
                             new_task = True
                     else:
                         new_task = True
                         task_id = str(uuid.uuid4())
-                        cat_input = dep["input"]
+                        dep_input = dep["input"]
                         dep_url = dep["url"]
-                    presim_check = MongoWorkflow.check_hash(dep_url, cat_input)
+                    presim_check = MongoWorkflow.check_hash(dep_url, dep_input)
                     if presim_check and not new_task:
-                        print(f"PRESIM: {presim_check}")
+                        print(f"Using existing dependency task for COMID: {catchment}, Name: {dep['name']}")
+                        print(f"Dependency taskID: {presim_check}")
                         cat_task = None
                         task_id = presim_check
                     else:
+                        print(f"Creating new dependency task for COMID: {catchment}, Name: {dep['name']}")
+
                         cat_task = dask.delayed(WorkflowManager.execute_dependency)(task_id, dep["name"], dep_url,
-                                                                                    cat_input, self.debug,
-                                                                                    dask_key_name=f"{dep['name']}_{task_id}")
+                                                                                    dep_input, self.debug,
+                                                                                    dask_key_name=f"{task_id}")
                     cat_dependencies[dep["name"]] = cat_task
                     cat_d_ids[dep["name"]] = task_id
                     cat_d_ids_only[dep["name"]] = task_id
@@ -534,7 +560,7 @@ class WorkflowManager:
                 catchment_task = dask.delayed(self.execute_segment)(self.task_id, catchment_id,
                                                                     upstream_catchments, upstream_ids, cat_dependencies,
                                                                     cat_d_ids, self.debug,
-                                                                    dask_key_name=f"{catchment}_{catchment_id}")
+                                                                    dask_key_name=f"{catchment_id}")
                 catchment_tasks[catchment] = catchment_task
                 self.source_ids[catchment] = upstream_ids
                 self.pourpoint = catchment_task
@@ -543,6 +569,7 @@ class WorkflowManager:
 
     def compute(self):
         try:
+            print(f"Pourpoint TYPE: {type(self.pourpoint)}, VALUE: {self.pourpoint}")
             self.pourpoint.compute()
         except Exception as e:
             state = "FAILED"
