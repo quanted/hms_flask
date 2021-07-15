@@ -1,5 +1,7 @@
-from flask import Response
-from flask_restful import Resource, reqparse, request
+import io
+
+from flask import Response, send_file
+from flask_restful import Resource, reqparse, request, Api
 import pymongo as pymongo
 from datetime import datetime
 import time
@@ -8,6 +10,7 @@ import requests
 import logging
 import json
 import os
+import zipfile
 
 from celery_cgi import celery
 
@@ -19,6 +22,7 @@ from .hms.nwm_reanalysis import NWM
 from .hms.nwm_data import NWMData
 from .hms.nwm_forecast import NWMForecastData
 from .hms.workflow_manager import WorkflowManager, MongoWorkflow
+
 
 IN_DOCKER = os.environ.get("IN_DOCKER")
 NWM_TASK_COUNT = 0
@@ -398,33 +402,33 @@ class HMSWorkflow(Resource):
     parser.add_argument("simulation_dependencies")
     parser.add_argument("catchment_dependencies", type=dict)
 
-    def post(self):
-        json_data = request.get_json(force=True)
-        sim_input = json_data["sim_input"]
-        comid_inputs = json_data["comid_inputs"]
-        network = json_data["network"]
-        simulation_dependencies = json_data["simulation_dependencies"]
-        catchment_dependencies = json_data["catchment_dependencies"]
+    # def post(self):
+    #     json_data = request.get_json(force=True)
+    #     sim_input = json_data["sim_input"]
+    #     comid_inputs = json_data["comid_inputs"]
+    #     network = json_data["network"]
+    #     simulation_dependencies = json_data["simulation_dependencies"]
+    #     catchment_dependencies = json_data["catchment_dependencies"]
+    #
+    #     sim_id = str(uuid.uuid4())
+    #     # output = self.execute_workflow.apply_async(args=(sim_id, sim_input, comid_inputs, network,
+    #     #                                                  simulation_dependencies, catchment_dependencies),
+    #     #                                            task_id=sim_id, queue='qed')
+    #     return Response(json.dumps({'job_id': sim_id}))
 
-        sim_id = str(uuid.uuid4())
-        output = self.execute_workflow.apply_async(args=(sim_id, sim_input, comid_inputs, network,
-                                                         simulation_dependencies, catchment_dependencies),
-                                                   task_id=sim_id, queue='qed')
-        return Response(json.dumps({'job_id': sim_id}))
-
-    @celery.task(name="HMS Workflow Manager", bind=True)
-    def execute_workflow(self, task_id, sim_input, comid_inputs, network, simulation_dependencies, catchment_dependencies):
-        debug = False
-        local = False
-        logging.debug("Starting HMS WorkflowManager. ID: {}".format(task_id))
-        workflow = WorkflowManager(task_id=task_id, sim_input=sim_input,
-                                   order=network["order"], sources=network["sources"],
-                                   local=local, debug=debug)
-        print(f"SIM DEP TYPE: {type(simulation_dependencies)}, SIM DEP: {simulation_dependencies}")
-        workflow.define_presim_dependencies(simulation_dependencies)
-        workflow.construct(catchment_inputs=comid_inputs, catchment_dependencies=catchment_dependencies)
-        workflow.compute()
-        logging.debug("HMS WorkflowManager simulation completed. ID: {}".format(task_id))
+    # @celery.task(name="HMS Workflow Manager", bind=True)
+    # def execute_workflow(self, task_id, sim_input, comid_inputs, network, simulation_dependencies, catchment_dependencies):
+    #     debug = False
+    #     local = False
+    #     logging.debug("Starting HMS WorkflowManager. ID: {}".format(task_id))
+    #     workflow = WorkflowManager(task_id=task_id, sim_input=sim_input,
+    #                                order=network["order"], sources=network["sources"],
+    #                                local=local, debug=debug)
+    #     print(f"SIM DEP TYPE: {type(simulation_dependencies)}, SIM DEP: {simulation_dependencies}")
+    #     workflow.define_presim_dependencies(simulation_dependencies)
+    #     workflow.construct(catchment_inputs=comid_inputs, catchment_dependencies=catchment_dependencies)
+    #     workflow.compute()
+    #     logging.debug("HMS WorkflowManager simulation completed. ID: {}".format(task_id))
 
     class Simulation(Resource):
         sim_parser = parser_base.copy()
@@ -454,7 +458,7 @@ class HMSWorkflow(Resource):
                     sim_taskid=sim_id,
                     simulation_dependencies=sim_deps,
                     network=args['network'])
-                print(f"New simulation created with id: {sim_id}")
+                logging.info(f"New simulation created with id: {sim_id}")
             elif new_sim:
                 return Response(json.dumps({"error": "A network must be provided with a new simulation."}))
             valid = 1
@@ -469,7 +473,7 @@ class HMSWorkflow(Resource):
                     comid=args['comid_input']["comid"],
                     dependencies=cat_deps
                 )
-                print(f"New catchment added to simulation: {sim_id}, COMID: {args['comid_input']['comid']}")
+                logging.info(f"New catchment added to simulation: {sim_id}, COMID: {args['comid_input']['comid']}")
             if valid == 1:
                 return MongoWorkflow.get_status(task_id=sim_id)
             else:
@@ -483,7 +487,7 @@ class HMSWorkflow(Resource):
                 if valid == 0:
                     return Response(json.dumps({"error": str(msg)}))
                 else:
-                    print(f"Executing HMS workflow simulation with ID: {sim_id}")
+                    logging.info(f"Executing HMS workflow simulation with ID: {sim_id}")
                     MongoWorkflow.set_sim_status(task_id=sim_id, status="PENDING")
                     output = self.execute_sim_workflow.apply_async(args=(sim_id,), task_id=sim_id, queue='qed')
                     return MongoWorkflow.get_status(task_id=sim_id)
@@ -514,7 +518,7 @@ class HMSWorkflow(Resource):
                 workflow.define_presim_dependencies(simulation_dependencies)
                 workflow.construct_from_db(catchment_ids=simulation_entry["catchments"])
                 workflow.compute()
-                logging.info("HMS WorkflowManager simulation completed. ID: {}".format(task_id))
+                logging.info("HMS WorkflowManager simulation created and executed. ID: {}".format(task_id))
 
     class Status(Resource):
         parser = parser_base.copy()
@@ -539,3 +543,78 @@ class HMSWorkflow(Resource):
             if not args.output:
                 del data["output"]
             return data
+
+    class Download(Resource):
+        parser = parser_base.copy()
+        parser.add_argument("task_id", location='args', required=True)
+
+        def get(self):
+            args = self.parser.parse_args()
+            wk_entry = MongoWorkflow.get_entry(task_id=args.task_id)
+            if wk_entry:
+                file_out = io.BytesIO()
+                file_name = None
+                if wk_entry["type"] == "workflow":
+                    file_name = f"workflow_{args.task_id}.zip"
+                    with zipfile.ZipFile(file_out, "w", compression=zipfile.ZIP_DEFLATED) as wk_zip:
+                        wk_file_name = "workflow_details.json"
+                        wk_file_data = json.dumps(MongoWorkflow.get_status(task_id=args.task_id))
+                        wk_zip.writestr(wk_file_name, data=json.dumps(wk_file_data))
+                        for comid, catchment_id in wk_entry["catchments"]:
+                            cat_entry = MongoWorkflow.get_entry(task_id=catchment_id)
+                            cat_input = json.dumps(cat_entry["input"])
+                            wk_zip.writestr(f"{comid}-input.json", data=json.dumps(cat_input))
+                            if cat_entry["output"]:
+                                cat_output = cat_entry["output"]
+                                wk_zip.writestr(f"{comid}-output.json", json.dumps(cat_output))
+                            for dep, dep_id in cat_entry["dependencies"].items():
+                                dep_name = f"{comid}-{dep}.json"
+                                dep_entry = MongoWorkflow.get_entry(task_id=dep_id)
+                                if dep_entry["output"]:
+                                    dep_data = json.dumps(dep_entry["output"])
+                                    wk_zip.writestr(dep_name, data=json.dumps(dep_data))
+                        wk_data = MongoWorkflow.get_entry(task_id=args.task_id)
+                        for dep, dep_id in wk_data["dependencies"].items():
+                            dep_name = f"workflow-{dep}.json"
+                            dep_entry = MongoWorkflow.get_entry(task_id=dep_id)
+                            if dep_entry["output"]:
+                                dep_data = json.dumps(dep_entry["output"])
+                                wk_zip.writestr(dep_name, data=json.dumps(dep_data))
+                elif wk_entry["type"] == "catchment":
+                    cat_entry = wk_entry
+                    sim_entry = MongoWorkflow.get_entry(task_id=cat_entry["sim_id"])
+                    comid = None
+                    for c, catchment_id in sim_entry["catchments"].items():
+                        if catchment_id == args.task_id:
+                            comid = c
+                            break
+                    file_name = f"{comid}_{args.task_id}.zip"
+                    with zipfile.ZipFile(file_out, "w", compression=zipfile.ZIP_DEFLATED) as wk_zip:
+                        cat_input = json.dumps(cat_entry["input"])
+                        wk_zip.writestr(f"{comid}-input.json", data=json.dumps(cat_input))
+                        if cat_entry["output"]:
+                            cat_output = cat_entry["output"]
+                            wk_zip.writestr(f"{comid}-output.json", json.dumps(cat_output))
+                        for dep, dep_id in cat_entry["dependencies"].items():
+                            dep_name = f"{comid}-{dep}.json"
+                            dep_entry = MongoWorkflow.get_entry(task_id=dep_id)
+                            if dep_entry["output"]:
+                                dep_data = json.dumps(dep_entry["output"])
+                                wk_zip.writestr(dep_name, data=json.dumps(dep_data))
+                else:       # dependency
+                    file_name = f"{wk_entry['name']}_{args.task_id}.zip"
+                    with zipfile.ZipFile(file_out, "w", compression=zipfile.ZIP_DEFLATED) as wk_zip:
+                        dep_input = json.dumps(wk_entry["input"])
+                        wk_zip.writestr(f"{wk_entry['name']}_input.json", json.dumps(dep_input))
+                        if wk_entry["output"]:
+                            dep_output = json.dumps(wk_entry["output"])
+                            wk_zip.writestr(f"{wk_entry['name']}_output.json", json.dumps(dep_output))
+                file_out.seek(0)
+                return send_file(
+                    file_out,
+                    mimetype='application/zip',
+                    as_attachment=True,
+                    attachment_filename=file_name,
+
+                )
+            return Response(json.dumps({"error": f"No object found for task_id: {args.task_id}"}))
