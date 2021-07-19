@@ -539,10 +539,11 @@ class HMSWorkflow(Resource):
         def get(self):
             args = self.parser.parse_args()
             data = MongoWorkflow.get_data(task_id=args.task_id)
-            if not args.input:
-                del data["input"]
-            if not args.output:
-                del data["output"]
+            if data["type"] != "workflow":
+                if not args.input:
+                    del data["input"]
+                if not args.output:
+                    del data["output"]
             return data
 
     class Download(Resource):
@@ -559,28 +560,26 @@ class HMSWorkflow(Resource):
                     file_name = f"workflow_{args.task_id}.zip"
                     with zipfile.ZipFile(file_out, "w", compression=zipfile.ZIP_DEFLATED) as wk_zip:
                         wk_file_name = "workflow_details.json"
-                        wk_file_data = json.dumps(MongoWorkflow.get_status(task_id=args.task_id))
+                        wk_file_data = MongoWorkflow.get_status(task_id=args.task_id)
                         wk_zip.writestr(wk_file_name, data=json.dumps(wk_file_data))
-                        for comid, catchment_id in wk_entry["catchments"]:
+                        for comid, catchment_id in wk_entry["catchments"].items():
                             cat_entry = MongoWorkflow.get_entry(task_id=catchment_id)
-                            cat_input = json.dumps(cat_entry["input"])
-                            wk_zip.writestr(f"{comid}-input.json", data=json.dumps(cat_input))
+                            wk_zip.writestr(f"{comid}_input.json", data=cat_entry["input"])
                             if cat_entry["output"]:
-                                cat_output = cat_entry["output"]
-                                wk_zip.writestr(f"{comid}-output.json", json.dumps(cat_output))
+                                wk_zip.writestr(f"{comid}_output.json", data=cat_entry["output"])
                             for dep, dep_id in cat_entry["dependencies"].items():
-                                dep_name = f"{comid}-{dep}.json"
+                                dep_name = f"{comid}-{dep}"
                                 dep_entry = MongoWorkflow.get_entry(task_id=dep_id)
+                                wk_zip.writestr(f"{dep_name}_input.json", data=json.dumps(dep_entry["input"]))
                                 if dep_entry["output"]:
-                                    dep_data = json.dumps(dep_entry["output"])
-                                    wk_zip.writestr(dep_name, data=json.dumps(dep_data))
+                                    wk_zip.writestr(f"{dep_name}_output.json", data=json.dumps(dep_entry["output"]))
                         wk_data = MongoWorkflow.get_entry(task_id=args.task_id)
-                        for dep, dep_id in wk_data["dependencies"].items():
-                            dep_name = f"workflow-{dep}.json"
+                        for dep_id in wk_data["dependencies"]:
                             dep_entry = MongoWorkflow.get_entry(task_id=dep_id)
+                            dep_name = f"workflow-{dep_entry['name']}"
+                            wk_zip.writestr(f"{dep_name}_input.json", data=json.dumps(dep_entry["input"]))
                             if dep_entry["output"]:
-                                dep_data = json.dumps(dep_entry["output"])
-                                wk_zip.writestr(dep_name, data=json.dumps(dep_data))
+                                wk_zip.writestr(f"{dep_name}_output.json", data=json.dumps(dep_entry["output"]))
                 elif wk_entry["type"] == "catchment":
                     cat_entry = wk_entry
                     sim_entry = MongoWorkflow.get_entry(task_id=cat_entry["sim_id"])
@@ -591,31 +590,28 @@ class HMSWorkflow(Resource):
                             break
                     file_name = f"{comid}_{args.task_id}.zip"
                     with zipfile.ZipFile(file_out, "w", compression=zipfile.ZIP_DEFLATED) as wk_zip:
-                        cat_input = json.dumps(cat_entry["input"])
-                        wk_zip.writestr(f"{comid}-input.json", data=json.dumps(cat_input))
+                        wk_zip.writestr(f"{comid}_input.json", data=cat_entry["input"])
                         if cat_entry["output"]:
-                            cat_output = cat_entry["output"]
-                            wk_zip.writestr(f"{comid}-output.json", json.dumps(cat_output))
+                            wk_zip.writestr(f"{comid}_output.json", data=cat_entry["output"])
                         for dep, dep_id in cat_entry["dependencies"].items():
-                            dep_name = f"{comid}-{dep}.json"
+                            dep_name = f"{comid}-{dep}"
                             dep_entry = MongoWorkflow.get_entry(task_id=dep_id)
+                            wk_zip.writestr(f"{dep_name}_input.json", data=json.dumps(dep_entry["input"]))
                             if dep_entry["output"]:
-                                dep_data = json.dumps(dep_entry["output"])
-                                wk_zip.writestr(dep_name, data=json.dumps(dep_data))
+                                wk_zip.writestr(f"{dep_name}_output.json", data=json.dumps(dep_entry["output"]))
                 else:       # dependency
                     file_name = f"{wk_entry['name']}_{args.task_id}.zip"
                     with zipfile.ZipFile(file_out, "w", compression=zipfile.ZIP_DEFLATED) as wk_zip:
-                        dep_input = json.dumps(wk_entry["input"])
-                        wk_zip.writestr(f"{wk_entry['name']}_input.json", json.dumps(dep_input))
+                        wk_zip.writestr(f"{wk_entry['name']}_input.json", data=json.dumps(wk_entry["input"]))
                         if wk_entry["output"]:
-                            dep_output = json.dumps(wk_entry["output"])
-                            wk_zip.writestr(f"{wk_entry['name']}_output.json", json.dumps(dep_output))
+                            wk_zip.writestr(f"{wk_entry['name']}_output.json", data=json.dumps(wk_entry["output"]))
                 file_out.seek(0)
-                return send_file(
+                response = send_file(
                     BytesIO(file_out.read()),
                     mimetype='application/zip',
                     as_attachment=True,
-                    attachment_filename=file_name,
-
+                    download_name=file_name
                 )
+                response.headers["x-suggested-filename"] = file_name
+                return response
             return Response(json.dumps({"error": f"No object found for task_id: {args.task_id}"}))
