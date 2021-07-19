@@ -4,6 +4,7 @@ from flask import Response, send_file
 from flask_restful import Resource, reqparse, request, Api
 import pymongo as pymongo
 from datetime import datetime
+from io import BytesIO
 import time
 import uuid
 import requests
@@ -611,7 +612,7 @@ class HMSWorkflow(Resource):
                             wk_zip.writestr(f"{wk_entry['name']}_output.json", json.dumps(dep_output))
                 file_out.seek(0)
                 return send_file(
-                    file_out,
+                    BytesIO(file_out.read()),
                     mimetype='application/zip',
                     as_attachment=True,
                     attachment_filename=file_name,
