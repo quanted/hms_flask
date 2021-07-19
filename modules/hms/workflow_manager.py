@@ -12,6 +12,7 @@ import hashlib
 from dask.distributed import Client, LocalCluster
 
 timeout = 600
+debug_logs = True
 
 
 class MongoWorkflow:
@@ -22,11 +23,13 @@ class MongoWorkflow:
         database = 'hms_workflows'
         if not in_docker:
             # Dev env mongoDB
-            logging.info("Connecting to mongoDB at: mongodb://localhost:27017/0")
+            if debug_logs:
+                logging.info("Connecting to mongoDB at: mongodb://localhost:27017/0")
             mongo = pymongo.MongoClient(host='mongodb://localhost:27017/0')
         else:
             # Production env mongoDB
-            logging.info("Connecting to mongoDB at: mongodb://mongodb:27017/0")
+            if debug_logs:
+                logging.info("Connecting to mongoDB at: mongodb://mongodb:27017/0")
             mongo = pymongo.MongoClient(host='mongodb://mongodb:27017/0')
         mongo[database].Collection.create_index([("timestamp", pymongo.DESCENDING)], expireAfterSeconds=604800)
 
@@ -117,7 +120,8 @@ class MongoWorkflow:
 
     @staticmethod
     def add_catchment(simulation_id: str, catchment_id: str, comid: str):
-        print(f"Add Catchment: sim_id: {simulation_id}, cat_id: {catchment_id}, COMID: {comid}")
+        if debug_logs:
+            logging.info(f"Add Catchment: sim_id: {simulation_id}, cat_id: {catchment_id}, COMID: {comid}")
         timestamp = datetime.datetime.now().isoformat(' ')
         mongo = MongoWorkflow.connect_to_mongodb()
         mongo_db = MongoWorkflow.get_collection(mongo)
@@ -157,7 +161,7 @@ class MongoWorkflow:
         mongo.close()
 
     @staticmethod
-    def prepare_inputs(simulation_id: str, catchment_inputs: dict = None, catchment_id: str = None, upstream: dict = None):
+    def prepare_inputs(catchment_id: str = None, upstream: dict = None):
         mongo = MongoWorkflow.connect_to_mongodb()
         mongo_db = MongoWorkflow.get_collection(mongo)
         posts = mongo_db["data"]
@@ -166,11 +170,13 @@ class MongoWorkflow:
         valid = True
         message = []
         if catchment_entry is None:
-            print(f"Catchment entry doesn't exist for id {catchment_id}")
-        complete_inputs = json.loads(catchment_entry["input"])
+            logging.info(f"Catchment entry doesn't exist for id {catchment_id}")
+        cat_inputs = catchment_entry["input"]
+        if type(cat_inputs) == str:
+            cat_inputs = json.loads(catchment_entry["input"])
         if not upstream:
             mongo.close()
-            return complete_inputs, valid, ", ".join(message)
+            return cat_inputs, valid, ", ".join(message)
         for stream, stream_id in upstream.items():
             query = {'_id': stream_id}
             upstream_data = posts.find_one(query)
@@ -178,7 +184,7 @@ class MongoWorkflow:
                 valid = False
                 message.append(upstream_data["message"])
         mongo.close()
-        return complete_inputs, valid, ", ".join(message)
+        return cat_inputs, valid, ", ".join(message)
 
     @staticmethod
     def completion_check(simulation_id: str):
@@ -196,7 +202,9 @@ class MongoWorkflow:
                 message.append(catchment_data["message"])
             status.append(catchment_data["status"])
         mongo.close()
-        if "IN-PROGRESS" in status or "PENDING" in status:
+        if "CANCELLED" in status:
+            s = "CANCELLED"
+        elif "IN-PROGRESS" in status or "PENDING" in status:
             s = "IN-PROGRESS"
         elif "FAILED" in status and "COMPLETED" in status:
             s = "INCOMPLETE"
@@ -204,6 +212,7 @@ class MongoWorkflow:
             s = "COMPLETED"
         else:
             s = "FAILED"
+        logging.info(f"Simulation ID: {simulation_id}, status: {s}, message: {message}")
         return s, ", ".join(message)
 
     @staticmethod
@@ -253,7 +262,8 @@ class MongoWorkflow:
             return data
         else:
             data["input"] = json.loads(data["input"])
-            data["output"] = json.loads(data["output"])
+            if type(data["output"]) == str:
+                data["output"] = json.loads(data["output"])
             return data
 
     @staticmethod
@@ -337,7 +347,7 @@ class MongoWorkflow:
             return 0, f"task_id is not of type workflow, task_id type: {data['type']}"
 
     @staticmethod
-    def set_sim_status(task_id, status: str = "PENDING"):
+    def set_sim_status(task_id, status: str = "PENDING", replace_completed: bool = True):
         mongo = MongoWorkflow.connect_to_mongodb()
         mongo_db = MongoWorkflow.get_collection(mongo)
         posts = mongo_db["data"]
@@ -346,7 +356,10 @@ class MongoWorkflow:
         if data is None:
             return
         if data["type"] == "catchment":
-            data["status"] = status
+            if replace_completed:
+                data["status"] = status
+            elif data["status"] != "COMPLETED":
+                data["status"] = status
             data["message"] = None
         elif data["type"] == "workflow":
             for comid, catchment_id in data["catchments"].items():
@@ -367,12 +380,10 @@ class MongoWorkflow:
             if sim_entry["type"] == "workflow":
                 pourpoint = str(list(sim_entry["catchment_sources"].keys())[-1])
                 pourpoint_id = sim_entry["catchments"][pourpoint]
-
                 client = Client("dask-scheduler:8786", timeout=2)
-
                 pourpoint_future = dask.distributed.Future(key=pourpoint_id, client=client)
                 pourpoint_future.cancel()
-            MongoWorkflow.set_sim_status(task_id=sim_id, status="CANCELLED")
+            MongoWorkflow.set_sim_status(task_id=sim_id, status="CANCELLED", replace_completed=False)
         mongo.close()
 
 
@@ -386,16 +397,19 @@ class WorkflowManager:
         if self.local:
             try:
                 client = Client("tcp://127.0.0.1:8786", timeout=2)
-                logging.info("Dask Client connected to existing local cluster at tcp://127.0.0.1:8786")
+                if debug_logs:
+                    logging.info("Dask Client connected to existing local cluster at tcp://127.0.0.1:8786")
                 self.scheduler = client.scheduler
             except Exception as e:
                 self.scheduler = LocalCluster()
                 client = Client(self.scheduler)
-                logging.debug(f"Dask Client connected to new local cluster at {self.scheduler}")
+                if debug_logs:
+                    logging.info(f"Dask Client connected to new local cluster at {self.scheduler}")
         else:
             self.scheduler = os.getenv('DASK_SCHEDULER', "tcp://127.0.0.1:8786")
-            logging.info(f"Dask Client connecting to existing cluster at {self.scheduler}")
             client = Client(self.scheduler)
+            if debug_logs:
+                logging.info(f"Dask Client connecting to existing cluster at {self.scheduler}")
         self.task_id = task_id
         self.sim_input = sim_input
         self.catchments = {}
@@ -423,11 +437,10 @@ class WorkflowManager:
     def define_presim_dependencies(self, dependencies):
         if isinstance(dependencies, str):
             dependencies = json.loads(dependencies.replace("\'", "\""))
-            print(f"CAT TYPE: {type(dependencies)}")
         for dep in dependencies:
             task_id = str(uuid.uuid4())
-            if self.debug:
-                print(f"Simulation Dependency: {dep}")
+            if debug_logs:
+                logging.info(f"Simulation Dependency: {dep}")
             inputs = dep["input"]
             presim_check = MongoWorkflow.check_hash(dep["url"], inputs)
             if presim_check:
@@ -470,12 +483,14 @@ class WorkflowManager:
                     if presim_check:
                         cat_task = None
                         task_id = presim_check["_id"]
-                        print(f"Using data from existing dependency task for COMID: {catchment}, NAME: {dep['name']}, ID: {task_id}")
+                        if debug_logs:
+                            logging.info(f"Using data from existing dependency task for COMID: {catchment}, NAME: {dep['name']}, ID: {task_id}")
                     else:
                         cat_task = dask.delayed(WorkflowManager.execute_dependency)(task_id, dep["name"], dep["url"],
                                                                                     cat_input, self.debug,
                                                                                     dask_key_name=f"{dep['name']}_{task_id}")
-                        print(f"Created new dependency task for COMID: {catchment}, NAME: {dep['name']}, ID: {task_id}")
+                        if debug_logs:
+                            logging.info(f"Created new dependency task for COMID: {catchment}, NAME: {dep['name']}, ID: {task_id}")
                     cat_dependencies[dep["name"]] = cat_task
                     cat_d_ids[dep["name"]] = task_id
                     cat_d_ids_only[dep["name"]] = task_id
@@ -541,13 +556,14 @@ class WorkflowManager:
                         dep_url = dep["url"]
                     presim_check = MongoWorkflow.check_hash(dep_url, dep_input)
                     if presim_check and not new_task:
-                        print(f"Using existing dependency task for COMID: {catchment}, Name: {dep['name']}")
-                        print(f"Dependency taskID: {presim_check}")
+                        if debug_logs:
+                            logging.info(f"Using existing dependency task for COMID: {catchment}, Name: {dep['name']}")
+                            logging.info(f"Dependency taskID: {presim_check}")
                         cat_task = None
                         task_id = presim_check
                     else:
-                        print(f"Creating new dependency task for COMID: {catchment}, Name: {dep['name']}")
-
+                        if debug_logs:
+                            logging.info(f"Creating new dependency task for COMID: {catchment}, Name: {dep['name']}")
                         cat_task = dask.delayed(WorkflowManager.execute_dependency)(task_id, dep["name"], dep_url,
                                                                                     dep_input, self.debug,
                                                                                     dask_key_name=f"{task_id}")
@@ -556,22 +572,33 @@ class WorkflowManager:
                     cat_d_ids_only[dep["name"]] = task_id
                 MongoWorkflow.update_catchment_entry(catchment_id=catchment_id, status="PENDING",
                                                      upstream=upstream_ids, dependencies=cat_d_ids_only)
-
+                self.source_ids[catchment] = upstream_ids
+                logging.warning(f"COMID: {catchment}, upstream: {upstream_ids}")
+                # catchment_task = dask.delayed(self.execute_segment)(simulation_id=self.task_id,
+                #                                                     catchment_id=catchment_id,
+                #                                                     upstream=upstream_catchments,
+                #                                                     upstream_ids=upstream_ids,
+                #                                                     dependency_task=cat_dependencies,
+                #                                                     dependency_ids=cat_d_ids,
+                #                                                     debug=self.debug,
+                #                                                     dask_key_name=f"{catchment_id}")
                 catchment_task = dask.delayed(self.execute_segment)(self.task_id, catchment_id,
                                                                     upstream_catchments, upstream_ids, cat_dependencies,
                                                                     cat_d_ids, self.debug,
-                                                                    dask_key_name=f"{catchment_id}")
+                                                                    dask_key_name=f"{catchment}_{catchment_id}")
                 catchment_tasks[catchment] = catchment_task
-                self.source_ids[catchment] = upstream_ids
                 self.pourpoint = catchment_task
             first_level = False
+        logging.warning(f"Source IDS: {self.source_ids}")
         MongoWorkflow.update_simulation_entry(simulation_id=self.task_id, status="IN-PROGRESS")
 
     def compute(self):
         try:
-            print(f"Pourpoint TYPE: {type(self.pourpoint)}, VALUE: {self.pourpoint}")
+            if debug_logs:
+                logging.info(f"Pourpoint TYPE: {type(self.pourpoint)}, VALUE: {self.pourpoint}")
             self.pourpoint.compute()
         except Exception as e:
+            logging.warning(f"Error: e001, message: {e}, compute failure for task_id: {self.task_id}")
             state = "FAILED"
             message = str(e)
             MongoWorkflow.update_simulation_entry(self.task_id, status=state, message=f"e001: {message}")
@@ -585,28 +612,31 @@ class WorkflowManager:
                 time.sleep(10)
                 data = request_input
             else:
-                print(f"Executing dependency task: {task_id}")
+                logging.info(f"Executing dependency task: {task_id}")
                 dep_data = requests.post(request_url, json=request_input)
                 data = json.loads(dep_data.text)
         except Exception as e:
+            logging.warning(f"Error: e002, message: {e}")
             data = {"error": f"e002: {str(e)}"}
         MongoWorkflow.dump_data(task_id=task_id, url=url, request_input=request_input, data=data, name=name)
-        print(f"Completed dependency task: {task_id}")
+        logging.info(f"Completed dependency task: {task_id}")
 
     @staticmethod
     @dask.delayed
-    def execute_segment(simulation_id: str, catchment_id: str, upstream: dict = None,
-                        upstream_ids: dict = None, dependency_task: dict = None, dependency_ids: dict = None,
+    def execute_segment(simulation_id: str, catchment_id: str, upstream: dict,
+                        upstream_ids: dict, dependency_task: dict, dependency_ids: dict,
                         debug: bool = False):
         t0 = time.time()
         MongoWorkflow.update_catchment_entry(catchment_id, status="IN-PROGRESS")
-        catchment_entry = MongoWorkflow.get_entry(task_id=catchment_id)
-        catchment_input = json.loads(catchment_entry["input"])
+        # catchment_entry = MongoWorkflow.get_entry(task_id=catchment_id)
+        # catchment_input = json.loads(catchment_entry["input"])
         try:
-            full_input, valid, message = MongoWorkflow.prepare_inputs(simulation_id=simulation_id,
-                                                                      catchment_id=catchment_id,
-                                                                      catchment_inputs=catchment_input,
-                                                                      upstream=upstream_ids)
+            if debug_logs:
+                logging.warning(f"Upstream_ids: {upstream_ids}")
+                logging.warning(f"Upstream: {upstream}")
+                logging.warning(f"Dependency_task: {dependency_task}")
+                logging.warning(f"Dependency_ids: {dependency_ids}")
+            full_input, valid, message = MongoWorkflow.prepare_inputs(catchment_id=catchment_id, upstream=upstream_ids)
         except Exception as e:
             logging.warning(f"Error: e003, message: {e}")
             valid = False
@@ -614,7 +644,7 @@ class WorkflowManager:
         if valid:
             output = None
             try:
-                print(f"Executing catchment task: {catchment_id}")
+                logging.warning(f"Executing catchment task: {catchment_id}")
                 output = WorkflowManager.submit_request(catchment_id, debug)
                 try:
                     output = json.loads(output)
@@ -622,6 +652,7 @@ class WorkflowManager:
                 except Exception as e:
                     status = "FAILED"
                     message = f"e004: {str(e)}"
+                    logging.warning(f"Error: e004, message: {e}")
                 if "metadata" in output and status != "FAILED":
                     if "ERROR" in output["metadata"]:
                         message = output["metadata"]["ERROR"]
@@ -635,6 +666,7 @@ class WorkflowManager:
             except Exception as e:
                 status = "FAILED"
                 message = f"e005: {str(e)}"
+                logging.warning(f"Error: e005, message: {message}")
             t1 = time.time()
             MongoWorkflow.update_catchment_entry(catchment_id=catchment_id, status=status, message=message,
                                                  output=output, runtime=str(round(t1-t0, 4)))
@@ -642,7 +674,7 @@ class WorkflowManager:
             MongoWorkflow.update_catchment_entry(catchment_id=catchment_id, status="FAILED", message=message)
         status, sim_message = MongoWorkflow.completion_check(simulation_id=simulation_id)
         MongoWorkflow.update_simulation_entry(simulation_id=simulation_id, status=status, message=message)
-        print(f"Completed catchment task: {catchment_id}")
+        logging.warning(f"Completed catchment task: {catchment_id}")
 
     @staticmethod
     def submit_request(catchment_taskid: str, debug: bool = False):
