@@ -84,6 +84,7 @@ class NWMData:
 		temp.write(r.content)
 		temp.seek(0)
 		ds = Dataset(temp.name)
+		# ds = {}
 		temp.close()
 		id = np.array(ds.variables["feature_id"])
 		ts = np.array(ds.variables["time"])

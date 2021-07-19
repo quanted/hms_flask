@@ -23,7 +23,7 @@ boto3.set_stream_logger('s3fs', logging.INFO)
 epa_waters_url = "https://watersgeo.epa.gov/arcgis/rest/services/NHDPlus_NP21/Catchments_NP21_Simplified/MapServer/0/query?"
 nwm_url = "s3://noaa-nwm-retro-v2-zarr-pds"
 all_variables = ["elevation", "order", "qBtmVertRunoff", "qBucket", "qSfcLatRunoff", "q_lateral", "streamflow", "velocity"]
-variables = ["streamflow","velocity"]
+variables = ["streamflow", "velocity"]
 missing_value = -9999
 
 
@@ -66,7 +66,6 @@ class NWM:
         client = Client(scheduler)
         logging.info(f"Request zarr data from: {nwm_url}")
         ds = xr.open_zarr(fsspec.get_mapper(nwm_url, anon=True), consolidated=True)
-
         comid_check = []
         missing_comids = []
         for c in self.comids:

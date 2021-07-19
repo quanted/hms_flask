@@ -115,6 +115,7 @@ class NWMForecastData:
         file_check = requests.get(request_url)
         if file_check.status_code == 200:
             self.data[f] = netCDF4.Dataset("inmemory.nc", memory=bytes(file_check.content))
+            # self.data[f] = {}
             return True
         else:
             return False

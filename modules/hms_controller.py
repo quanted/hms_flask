@@ -1,3 +1,8 @@
+import warnings
+with warnings.catch_warnings():
+    warnings.filterwarnings("default", message="numpy.ndarray size changed", category=RuntimeWarning)
+    print("Ignoring numpy runtime warnings. ")
+
 from flask import Response
 from flask_restful import Resource, reqparse, request
 import pymongo as pymongo
