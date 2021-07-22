@@ -484,7 +484,11 @@ class HMSWorkflow(Resource):
             args = self.sim_parser.parse_args()
             if args.sim_id:
                 sim_id = str(args.sim_id)
-                valid, msg = MongoWorkflow.simulation_run_ready(task_id=sim_id)
+                try:
+                    valid, msg = MongoWorkflow.simulation_run_ready(task_id=sim_id)
+                except Exception as e:
+                    logging.warning(f"No simulation found for execution with taskID: {sim_id}")
+                    return Response(json.dumps({"error": f"No simulation found with taskID:{sim_id}"}))
                 if valid == 0:
                     return Response(json.dumps({"error": str(msg)}))
                 else:
@@ -493,7 +497,7 @@ class HMSWorkflow(Resource):
                     output = self.execute_sim_workflow.apply_async(args=(sim_id,), task_id=sim_id, queue='qed')
                     return MongoWorkflow.get_status(task_id=sim_id)
             else:
-                return Response(json.dumps({"error": "No simulation taskid provided. Requires argument 'sim_id'"}))
+                return Response(json.dumps({"error": "No simulation taskID provided. Requires argument 'sim_id'"}))
 
         def delete(self):
             args = self.sim_parser.parse_args()
