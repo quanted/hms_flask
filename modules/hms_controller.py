@@ -117,6 +117,22 @@ class HMSFlaskTest(Resource):
         posts.insert_one(data)
 
 
+class HMSRevokeTask(Resource):
+    parser = parser_base.copy()
+    parser.add_argument('task_id')
+
+    def get(self):
+        args = self.parser.parse_args()
+        task_id = args.task_id
+        try:
+            celery.control.revoke(task_id, terminate=True, signal='SIGKILL')
+            message = f"Successfully cancelled task: {task_id}"
+        except Exception as e:
+            message = f"Error attempting to cancel task: {task_id}, message: {e}"
+        logging.info(message)
+        return Response(json.dumps({'task_id': task_id, 'result': message}))
+
+
 class NCDCStationSearch(Resource):
     """
     Controller class for getting all ncdc stations within a provided geometry, as geojson, and a date range.
