@@ -12,11 +12,14 @@ import boto3
 import logging
 from dask.distributed import Client, LocalCluster
 import datetime
+import warnings
 try:
     from .timeseries import TimeSeriesOutput
 except ImportError:
     from timeseries import TimeSeriesOutput
 
+warnings.filterwarnings("ignore", category=ResourceWarning)
+logging.getLogger('boto3').setLevel(logging.CRITICAL)
 boto3.set_stream_logger('botocore', logging.INFO)
 boto3.set_stream_logger('s3fs', logging.INFO)
 

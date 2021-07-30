@@ -16,7 +16,6 @@ debug_logs = True
 
 
 class MongoWorkflow:
-
     @staticmethod
     def connect_to_mongodb():
         in_docker = (os.getenv("IN_DOCKER", "False") == "True")
@@ -267,7 +266,7 @@ class MongoWorkflow:
             return data
 
     @staticmethod
-    def dump_data(task_id: str, url: str, data, name: str, request_input: dict, data_type: str = "dependency"):
+    def dump_data(task_id: str, url: str, name: str, request_input: dict, data=None, data_type: str = "dependency", status: str = "FAILED"):
         timestamp = datetime.datetime.now().isoformat(' ')
         exists = MongoWorkflow.get_entry(task_id=task_id)
         mongo = MongoWorkflow.connect_to_mongodb()
@@ -282,6 +281,7 @@ class MongoWorkflow:
             "output": data,
             "input": request_input,
             "hash": hash,
+            "status": status,
             "timestamp": timestamp,
         }
         if exists:
@@ -385,6 +385,23 @@ class MongoWorkflow:
                 pourpoint_future.cancel()
             MongoWorkflow.set_sim_status(task_id=sim_id, status="CANCELLED", replace_completed=False)
         mongo.close()
+
+    @staticmethod
+    def check_dependencies(dependencies: dict):
+        mongo = MongoWorkflow.connect_to_mongodb()
+        mongo_db = MongoWorkflow.get_collection(mongo)
+        posts = mongo_db["data"]
+        valid = True
+        message = ""
+        for comid, id in dependencies.items():
+            query = {'_id': id}
+            entry = posts.find_one(query)
+            if "status" in entry:
+                if entry["status"] == "FAILED":
+                    valid = False
+                    message = f"Dependency: {id} failed"
+                    break
+        return valid, message
 
 
 class WorkflowManager:
@@ -544,6 +561,7 @@ class WorkflowManager:
                     new_task = False
                     if "input" not in dep:         # TaskID has been given to the dep, object in db
                         dep_entry = MongoWorkflow.get_entry(task_id=dep["taskID"])
+                        logging.info(f"DEP: {dep}")
                         dep_input = dep_entry["input"]
                         dep_url = dep_entry["url"]
                         task_id = dep["taskID"]
@@ -567,6 +585,8 @@ class WorkflowManager:
                         cat_task = dask.delayed(WorkflowManager.execute_dependency)(task_id, dep["name"], dep_url,
                                                                                     dep_input, self.debug,
                                                                                     dask_key_name=f"{task_id}")
+                        MongoWorkflow.dump_data(task_id=task_id, url=dep_url, request_input=dep_input, name=dep["name"],
+                                                status="PENDING")
                     cat_dependencies[dep["name"]] = cat_task
                     cat_d_ids[dep["name"]] = task_id
                     cat_d_ids_only[dep["name"]] = task_id
@@ -606,7 +626,9 @@ class WorkflowManager:
     @staticmethod
     @dask.delayed
     def execute_dependency(task_id: str, name: str, url: str, request_input: dict, debug: bool = False):
+        MongoWorkflow.dump_data(task_id=task_id, url=url, request_input=request_input, name=name, status="IN-PROGRESS")
         request_url = str(os.getenv('HMS_BACKEND_SERVER_INTERNAL', "http://localhost:60550/")) + url
+        status = "FAILED"
         try:
             if debug:
                 time.sleep(10)
@@ -615,11 +637,17 @@ class WorkflowManager:
                 logging.info(f"Executing dependency task: {task_id}")
                 dep_data = requests.post(request_url, json=request_input)
                 data = json.loads(dep_data.text)
+                if "metadata" in data.keys():
+                    if "error" not in data["metadata"].keys():
+                        status = "SUCCESS"
+                if "data" in data.keys():
+                    if len(data["data"]) > 0:
+                        status = "SUCCESS"
         except Exception as e:
             logging.warning(f"Error: e002, message: {e}")
             data = {"error": f"e002: {str(e)}"}
-        MongoWorkflow.dump_data(task_id=task_id, url=url, request_input=request_input, data=data, name=name)
-        logging.info(f"Completed dependency task: {task_id}")
+        MongoWorkflow.dump_data(task_id=task_id, url=url, request_input=request_input, data=data, name=name, status=status)
+        logging.info(f"Completed dependency task: {task_id}, status: {status}")
 
     @staticmethod
     @dask.delayed
@@ -628,8 +656,6 @@ class WorkflowManager:
                         debug: bool = False):
         t0 = time.time()
         MongoWorkflow.update_catchment_entry(catchment_id, status="IN-PROGRESS")
-        # catchment_entry = MongoWorkflow.get_entry(task_id=catchment_id)
-        # catchment_input = json.loads(catchment_entry["input"])
         try:
             if debug_logs:
                 logging.warning(f"Upstream_ids: {upstream_ids}")
@@ -637,6 +663,8 @@ class WorkflowManager:
                 logging.warning(f"Dependency_task: {dependency_task}")
                 logging.warning(f"Dependency_ids: {dependency_ids}")
             full_input, valid, message = MongoWorkflow.prepare_inputs(catchment_id=catchment_id, upstream=upstream_ids)
+            valid, message = MongoWorkflow.check_dependencies(dependencies=dependency_ids)
+            # TODO: Check that the dependencies all have status="SUCCESS" otherwise valid=False
         except Exception as e:
             logging.warning(f"Error: e003, message: {e}")
             valid = False
