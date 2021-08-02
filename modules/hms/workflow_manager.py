@@ -299,6 +299,8 @@ class MongoWorkflow:
         exists = posts.find_one({"hash": hash})
         mongo.close()
         if exists:
+            if "status" not in exists.keys():
+                return None
             if "metadata" in exists["output"].keys():       # If there is a reported error in the metadata
                 if "error" in exists["output"]["metadata"].keys() or "ERROR" in exists["output"]["metadata"].keys():
                     return None
@@ -396,6 +398,7 @@ class MongoWorkflow:
         for comid, id in dependencies.items():
             query = {'_id': id}
             entry = posts.find_one(query)
+            logging.info(f"TEST DEP - COMID: {comid}, ID: {id}")
             if "status" in entry:
                 if entry["status"] == "FAILED":
                     valid = False
@@ -565,7 +568,10 @@ class WorkflowManager:
                         dep_input = dep_entry["input"]
                         dep_url = dep_entry["url"]
                         task_id = dep["taskID"]
-                        if dep_entry["output"] is None:
+                        if "status" in dep_entry.keys():
+                            if dep_entry["status"] != "COMPLETED":
+                                new_task = True
+                        else:
                             new_task = True
                     else:
                         new_task = True
@@ -573,15 +579,16 @@ class WorkflowManager:
                         dep_input = dep["input"]
                         dep_url = dep["url"]
                     presim_check = MongoWorkflow.check_hash(dep_url, dep_input)
-                    if presim_check and not new_task:
+                    if presim_check or not new_task:
                         if debug_logs:
-                            logging.info(f"Using existing dependency task for COMID: {catchment}, Name: {dep['name']}")
+                            logging.info(f"Using existing dependency task for COMID: {catchment}, Name: {dep['name']}, new_task: {new_task}")
                             logging.info(f"Dependency taskID: {presim_check}")
                         cat_task = None
                         task_id = presim_check
                     else:
                         if debug_logs:
                             logging.info(f"Creating new dependency task for COMID: {catchment}, Name: {dep['name']}")
+                            logging.info(f"Dependency taskID: {task_id}")
                         cat_task = dask.delayed(WorkflowManager.execute_dependency)(task_id, dep["name"], dep_url,
                                                                                     dep_input, self.debug,
                                                                                     dask_key_name=f"{task_id}")
@@ -639,10 +646,10 @@ class WorkflowManager:
                 data = json.loads(dep_data.text)
                 if "metadata" in data.keys():
                     if "error" not in data["metadata"].keys():
-                        status = "SUCCESS"
+                        status = "COMPLETED"
                 if "data" in data.keys():
                     if len(data["data"]) > 0:
-                        status = "SUCCESS"
+                        status = "COMPLETED"
         except Exception as e:
             logging.warning(f"Error: e002, message: {e}")
             data = {"error": f"e002: {str(e)}"}
@@ -663,12 +670,20 @@ class WorkflowManager:
                 logging.warning(f"Dependency_task: {dependency_task}")
                 logging.warning(f"Dependency_ids: {dependency_ids}")
             full_input, valid, message = MongoWorkflow.prepare_inputs(catchment_id=catchment_id, upstream=upstream_ids)
-            valid, message = MongoWorkflow.check_dependencies(dependencies=dependency_ids)
             # TODO: Check that the dependencies all have status="SUCCESS" otherwise valid=False
         except Exception as e:
             logging.warning(f"Error: e003, message: {e}")
             valid = False
             message = f"e003: {e}"
+        try:
+            entry = MongoWorkflow.get_entry(task_id=catchment_id)
+            dependency_ids = entry["dependencies"]
+            if dependency_ids:
+                valid, message = MongoWorkflow.check_dependencies(dependencies=dependency_ids)
+        except Exception as e:
+            logging.warning(f"Error: e003b, message: {e}")
+            valid = False
+            message = f"e003b: {e}"
         if valid:
             output = None
             try:

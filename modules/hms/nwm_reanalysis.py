@@ -64,6 +64,7 @@ class NWM:
             self.output.add_metadata(k, v)
 
     def request_timeseries(self):
+        warnings.filterwarnings("ignore", category=ResourceWarning)
         scheduler = os.getenv('DASK_SCHEDULER', "127.0.0.1:8786")
         # scheduler = LocalCluster()
         client = Client(scheduler)

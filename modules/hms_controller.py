@@ -232,7 +232,12 @@ class NWMDownload(Resource):
         posts = mongo_db["data"]
         time_stamp = datetime.utcnow()
         data = {'_id': task_id, 'date': time_stamp, 'data': nwm.output.to_dict()}
-        posts.insert_one(data)
+        query = {'_id': task_id}
+        exists = posts.find_one(query)
+        if exists:
+            posts.replace(query, data)
+        else:
+            posts.insert_one(data)
 
 
 class NLDASGridCells(Resource):
