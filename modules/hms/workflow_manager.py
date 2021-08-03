@@ -273,7 +273,7 @@ class MongoWorkflow:
         mongo_db = MongoWorkflow.get_collection(mongo)
         posts = mongo_db["data"]
         hash = hashlib.md5((url.lower() + json.dumps(request_input, sort_keys=True)).encode()).hexdigest()
-        data = {
+        dep_data = {
             "_id": task_id,
             "type": data_type,
             "url": url,
@@ -285,9 +285,9 @@ class MongoWorkflow:
             "timestamp": timestamp,
         }
         if exists:
-            posts.replace_one({"_id": task_id}, data)
+            posts.replace_one({"_id": task_id}, dep_data)
         else:
-            posts.insert_one(data)
+            posts.insert_one(dep_data)
         mongo.close()
 
     @staticmethod
@@ -299,17 +299,28 @@ class MongoWorkflow:
         exists = posts.find_one({"hash": hash})
         mongo.close()
         if exists:
+            same_task = True
+            logging_check = []
             if "status" not in exists.keys():
-                return None
+                same_task = False
+                logging_check.append("status not in entry")
+            else:
+                if exists["status"] != "COMPLETED":
+                    same_task = False
+                    logging_check.append("status != completed")
             if "metadata" in exists["output"].keys():       # If there is a reported error in the metadata
                 if "error" in exists["output"]["metadata"].keys() or "ERROR" in exists["output"]["metadata"].keys():
-                    return None
+                    same_task = False
+                    logging_check.append("error in metadata")
             if "data" in exists["output"].keys():           # If there is no data in the response
                 if len(exists["output"]["data"]) == 0:
-                    return None
+                    same_task = False
+                    logging_check.append("no data in output")
             else:
-                return None
-            return exists["_id"]
+                logging.info(f"Unable to reuse task due to {', '.join(logging_check)}")
+                same_task = False
+            if same_task:
+                return exists["_id"]
         return None
 
     @staticmethod
@@ -562,8 +573,10 @@ class WorkflowManager:
                     catchment_dependencies = list_catchment
                 for dep in catchment_dependencies:
                     new_task = False
-                    if "input" not in dep:         # TaskID has been given to the dep, object in db
+                    dep_entry = None
+                    if "taskID" in dep.keys():
                         dep_entry = MongoWorkflow.get_entry(task_id=dep["taskID"])
+                    if "input" not in dep:         # TaskID has been given to the dep, object in db
                         logging.info(f"DEP: {dep}")
                         dep_input = dep_entry["input"]
                         dep_url = dep_entry["url"]
@@ -579,7 +592,9 @@ class WorkflowManager:
                         dep_input = dep["input"]
                         dep_url = dep["url"]
                     presim_check = MongoWorkflow.check_hash(dep_url, dep_input)
-                    if presim_check or not new_task:
+                    if debug_logs:
+                        logging.info(f"Presim_check: {presim_check}")
+                    if presim_check and not new_task:
                         if debug_logs:
                             logging.info(f"Using existing dependency task for COMID: {catchment}, Name: {dep['name']}, new_task: {new_task}")
                             logging.info(f"Dependency taskID: {presim_check}")
