@@ -1,3 +1,6 @@
+"""
+HMS Workflow Manger handles the creation, execution, and management of HMS simulations.
+"""
 import os
 import uuid
 import json
@@ -11,13 +14,22 @@ import dask
 import hashlib
 from dask.distributed import Client, LocalCluster
 
-timeout = 600
-debug_logs = True
+timeout = 600  # Timeout for task execution of a single segment 600=10 minutes
+debug_logs = True  # Outputs to log processing steps
 
 
 class MongoWorkflow:
+    """
+    Class for handling all interactions with the mongodb database for HMS workflow objects.
+    """
+
     @staticmethod
     def connect_to_mongodb():
+        """
+        Get connection to mongodb instance and the database used for storing all workflow objects.
+        Sets object expiration to 7 days = 604800 seconds
+        :return: mongo Client
+        """
         in_docker = (os.getenv("IN_DOCKER", "False") == "True")
         database = 'hms_workflows'
         if not in_docker:
@@ -36,6 +48,11 @@ class MongoWorkflow:
 
     @staticmethod
     def get_collection(mongo: pymongo.MongoClient):
+        """
+        Get a collection from mongodb client
+        :param mongo: A mongo DB client
+        :return: The collection 'database' from the mongo DB client
+        """
         database = 'hms_workflows'
         mongo_db = mongo[database]
         return mongo_db
@@ -43,6 +60,17 @@ class MongoWorkflow:
     @staticmethod
     def create_simulation_entry(simulation_id: str, simulation_input: dict = None, status: str = None,
                                 catchments=None, order: list = None, sources: list = None, dependencies: dict = None):
+        """
+        Create new simulation object in mongodb collection.
+        :param simulation_id: The simulation task_id
+        :param simulation_input: The simulation inputs
+        :param status: The current simulation status
+        :param catchments: The collection of catchments in the simulation
+        :param order: The order those catchments can be executed in, traversal by reverse BFS
+        :param sources: The sources of each catchment in the simulation
+        :param dependencies: Simulation level dependencies which must execute prior to any catchment simulations
+        :return: None
+        """
         timestamp = datetime.datetime.now().isoformat(' ')
         mongo = MongoWorkflow.connect_to_mongodb()
         mongo_db = MongoWorkflow.get_collection(mongo)
@@ -74,6 +102,16 @@ class MongoWorkflow:
     @staticmethod
     def create_catchment_entry(simulation_id: str, catchment_id: str, catchment_input: dict = None, status: str = None,
                                upstream=None, dependencies: dict = None):
+        """
+        Create new catchment object in mongodb collection.
+        :param simulation_id: The simulation task_id which this catchment corresponds to
+        :param catchment_id: The catchment task_id
+        :param catchment_input: The inputs for the catchment simulation
+        :param status: The current status of the catchment simulation
+        :param upstream: The upstream catchments
+        :param dependencies: Catchment dependencies which must execute prior to the catchment simulation
+        :return: None
+        """
         timestamp = datetime.datetime.now().isoformat(' ')
         mongo = MongoWorkflow.connect_to_mongodb()
         mongo_db = MongoWorkflow.get_collection(mongo)
@@ -101,7 +139,17 @@ class MongoWorkflow:
         mongo.close()
 
     @staticmethod
-    def update_simulation_entry(simulation_id: str, status: str = None, message: str = None, timestamp: str = None):
+    def update_simulation_entry(simulation_id: str, status: str = None, message: str = None, timestamp: str = None,
+                                dependencies: dict = None):
+        """
+        Update an existing simulation object in the mongo collection.
+        :param simulation_id: The existing simulation task_id
+        :param status: The current status of the simulation
+        :param message: A message to pass along errors or other necessary information
+        :param timestamp: A timestamp of the update, will use now if not provided
+        :param dependencies: Update to the dependencies
+        :return: None
+        """
         if not timestamp:
             timestamp = datetime.datetime.now().isoformat(' ')
         mongo = MongoWorkflow.connect_to_mongodb()
@@ -114,11 +162,20 @@ class MongoWorkflow:
             data["status"] = status
         if message:
             data["message"] = message
+        if dependencies:
+            data["dependencies"] = dependencies
         posts.replace_one(query, data)
         mongo.close()
 
     @staticmethod
     def add_catchment(simulation_id: str, catchment_id: str, comid: str):
+        """
+        Connect a catchment object to an existing simulation object.
+        :param simulation_id: The simulation task_id
+        :param catchment_id: The catchment task_id which is being added to a simulation
+        :param comid: The comid of the catchment task_id being added to the simulation
+        :return: None
+        """
         if debug_logs:
             logging.info(f"Add Catchment: sim_id: {simulation_id}, cat_id: {catchment_id}, COMID: {comid}")
         timestamp = datetime.datetime.now().isoformat(' ')
@@ -134,7 +191,19 @@ class MongoWorkflow:
 
     @staticmethod
     def update_catchment_entry(catchment_id: str, status: str = None, message: str = None, output: dict = None,
-                               timestamp: str = None, runtime: str = None, upstream = None, dependencies: dict = None):
+                               timestamp: str = None, runtime: str = None, upstream=None, dependencies: dict = None):
+        """
+        Update an existing catchment mongo object.
+        :param catchment_id: The catchment task_id
+        :param status: The catchment simulation status
+        :param message: A message provided by errors or other function of the catchment simulation process
+        :param output: The output of the catchment simulation
+        :param timestamp: The timestamp of the database update/creation
+        :param runtime: The total runtime of the catchment simulation, starting at task execution ending at completion
+        :param upstream: The upstream catchments
+        :param dependencies: Catchment dependencies which must execute prior to the catchment simulation
+        :return: None
+        """
         if not timestamp:
             timestamp = datetime.datetime.now().isoformat(' ')
         mongo = MongoWorkflow.connect_to_mongodb()
@@ -161,6 +230,12 @@ class MongoWorkflow:
 
     @staticmethod
     def prepare_inputs(catchment_id: str = None, upstream: dict = None):
+        """
+        Assemble task inputs and check the status of dependencies and upstream simulations.
+        :param catchment_id: The catchment task_id
+        :param upstream: The upstream catchments
+        :return: The catchment simulation inputs, valid:bool, message:str
+        """
         mongo = MongoWorkflow.connect_to_mongodb()
         mongo_db = MongoWorkflow.get_collection(mongo)
         posts = mongo_db["data"]
@@ -181,12 +256,20 @@ class MongoWorkflow:
             upstream_data = posts.find_one(query)
             if upstream_data["status"] != "COMPLETED":
                 valid = False
-                message.append(upstream_data["message"])
+                if "Segment" not in upstream_data['message']:
+                    message.append(f"Segment: {stream}, message: {upstream_data['message']}")
+                else:
+                    message.append(f"{upstream_data['message']}")
         mongo.close()
         return cat_inputs, valid, ", ".join(message)
 
     @staticmethod
     def completion_check(simulation_id: str):
+        """
+        Check if the simulation has finished and the status of the simulation based upon the catchment tasks and dependencies
+        :param simulation_id: The simulation task_id
+        :return: The current simulation status, message:str
+        """
         mongo = MongoWorkflow.connect_to_mongodb()
         mongo_db = MongoWorkflow.get_collection(mongo)
         posts = mongo_db["data"]
@@ -216,6 +299,11 @@ class MongoWorkflow:
 
     @staticmethod
     def get_status(task_id: str):
+        """
+        Get the status and details of a mongo workflow object by task_id. Does not include inputs and outputs
+        :param task_id: The object task_id, maybe a workflow, catchment or dependency
+        :return: The status and details of the object, or an error message if no object exists for the task_id
+        """
         mongo = MongoWorkflow.connect_to_mongodb()
         mongo_db = MongoWorkflow.get_collection(mongo)
         posts = mongo_db["data"]
@@ -239,6 +327,18 @@ class MongoWorkflow:
                     "dependencies": c_data["dependencies"]
                 }
             data["catchments"] = catchments
+            dependencies = {}
+            for d_data in data["dependencies"]:
+                dep = d_data[0]
+                d_id = d_data[1]
+                query = {'_id': d_id}
+                d_data = posts.find_one(query)
+                dependencies[dep] = {
+                    "status": d_data["status"],
+                    "task_id": d_id,
+                    "timestamp": d_data["timestamp"]
+                }
+            data["dependencies"] = dependencies
         else:
             del data["output"]
         mongo.close()
@@ -246,6 +346,11 @@ class MongoWorkflow:
 
     @staticmethod
     def get_data(task_id: str):
+        """
+        Get all the output and input data of a mongo object.
+        :param task_id: The object task_id
+        :return: The input and output data or an error if the task_id does not exist
+        """
         mongo = MongoWorkflow.connect_to_mongodb()
         mongo_db = MongoWorkflow.get_collection(mongo)
         posts = mongo_db["data"]
@@ -266,7 +371,20 @@ class MongoWorkflow:
             return data
 
     @staticmethod
-    def dump_data(task_id: str, url: str, name: str, request_input: dict, data=None, data_type: str = "dependency", status: str = "FAILED"):
+    def dump_data(task_id: str, url: str, name: str, request_input: dict, data=None, data_type: str = "dependency",
+                  status: str = "FAILED"):
+        """
+        Simulation/catchment dependencies object database dump, used to create or update dependency objects. Will
+        replace an existing object or create a new.
+        :param task_id: The object task_id
+        :param url: The url to execute the dependency task
+        :param name: A name for the task to identify the task data type
+        :param request_input: The inputs to be submitted to the url to execute the task
+        :param data: The resulting output returned on task completion
+        :param data_type: The type of object, defaults to dependency
+        :param status: The status of the task
+        :return: None
+        """
         timestamp = datetime.datetime.now().isoformat(' ')
         exists = MongoWorkflow.get_entry(task_id=task_id)
         mongo = MongoWorkflow.connect_to_mongodb()
@@ -292,6 +410,13 @@ class MongoWorkflow:
 
     @staticmethod
     def check_hash(url: str, request_input: dict):
+        """
+        Check the hash of the combined url and serialized request_input against those object tasks that have already
+        been completed to reuse the output if data exists.
+        :param url: The url for the dependency task
+        :param request_input: The request body for the dependency task
+        :return: None if no matching completed hash exists, otherwise will return the task_id of the matching object
+        """
         mongo = MongoWorkflow.connect_to_mongodb()
         mongo_db = MongoWorkflow.get_collection(mongo)
         posts = mongo_db["data"]
@@ -308,11 +433,11 @@ class MongoWorkflow:
                 if exists["status"] != "COMPLETED":
                     same_task = False
                     logging_check.append("status != completed")
-            if "metadata" in exists["output"].keys():       # If there is a reported error in the metadata
+            if "metadata" in exists["output"].keys():  # If there is a reported error in the metadata
                 if "error" in exists["output"]["metadata"].keys() or "ERROR" in exists["output"]["metadata"].keys():
                     same_task = False
                     logging_check.append("error in metadata")
-            if "data" in exists["output"].keys():           # If there is no data in the response
+            if "data" in exists["output"].keys():  # If there is no data in the response
                 if len(exists["output"]["data"]) == 0:
                     same_task = False
                     logging_check.append("no data in output")
@@ -325,6 +450,11 @@ class MongoWorkflow:
 
     @staticmethod
     def get_entry(task_id: str):
+        """
+        Get the complete mongo db object
+        :param task_id: The id of the mongo db object
+        :return: The db object if exists else None
+        """
         mongo = MongoWorkflow.connect_to_mongodb()
         mongo_db = MongoWorkflow.get_collection(mongo)
         posts = mongo_db["data"]
@@ -338,6 +468,11 @@ class MongoWorkflow:
 
     @staticmethod
     def simulation_run_ready(task_id):
+        """
+        Checks that all catchments have been added to the simulation and that the simulation is ready to run.
+        :param task_id: The simulation task_id
+        :return: 0=not-ready/1=ready, message indicating why the simulation is not ready
+        """
         mongo = MongoWorkflow.connect_to_mongodb()
         mongo_db = MongoWorkflow.get_collection(mongo)
         posts = mongo_db["data"]
@@ -361,6 +496,13 @@ class MongoWorkflow:
 
     @staticmethod
     def set_sim_status(task_id, status: str = "PENDING", replace_completed: bool = True):
+        """
+        Updates the simulation status
+        :param task_id: The simulation task_id to be updated
+        :param status: The new status of the simulation
+        :param replace_completed: Replace status of already completed simulation, default=True
+        :return: None
+        """
         mongo = MongoWorkflow.connect_to_mongodb()
         mongo_db = MongoWorkflow.get_collection(mongo)
         posts = mongo_db["data"]
@@ -384,6 +526,11 @@ class MongoWorkflow:
 
     @staticmethod
     def kill_simulation(sim_id: str):
+        """
+        Terminate a currently running simulation.
+        :param sim_id: The simulation task_id
+        :return: None
+        """
         mongo = MongoWorkflow.connect_to_mongodb()
         mongo_db = MongoWorkflow.get_collection(mongo)
         posts = mongo_db["data"]
@@ -401,6 +548,11 @@ class MongoWorkflow:
 
     @staticmethod
     def check_dependencies(dependencies: dict):
+        """
+        Check the status of a dictionary of dependencies.
+        :param dependencies: dictionary of dependencies to check, where {NAME:TASKID}
+        :return: True=not failed/False=Failed, message
+        """
         mongo = MongoWorkflow.connect_to_mongodb()
         mongo_db = MongoWorkflow.get_collection(mongo)
         posts = mongo_db["data"]
@@ -409,7 +561,6 @@ class MongoWorkflow:
         for comid, id in dependencies.items():
             query = {'_id': id}
             entry = posts.find_one(query)
-            logging.info(f"TEST DEP - COMID: {comid}, ID: {id}")
             if "status" in entry:
                 if entry["status"] == "FAILED":
                     valid = False
@@ -419,9 +570,23 @@ class MongoWorkflow:
 
 
 class WorkflowManager:
+    """
+    The HMS Workflow Manager class that handles all simulation setup, execution and processing. A simulation created as
+    a dask task graph, where each catchment simulation is a node in the graph with execution order determined by the
+    stream network and dependencies are nodes connected to those catchment simulations requiring that dependency data.
+    """
 
     def __init__(self, task_id: str, sim_input: dict, sources: list, order: list, local: bool = False,
                  debug: bool = False):
+        """
+        Workflow Manager initializer
+        :param task_id: The simulation task_id, must already exist in the database
+        :param sim_input: The simulation inputs
+        :param sources: The list of sources for each catchment in the simulation
+        :param order: The order of execution of the catchments
+        :param local: Run locally or in a docker container
+        :param debug: Run in debug mode
+        """
         self.local = local
         self.debug = debug
         self.scheduler = None
@@ -454,6 +619,11 @@ class WorkflowManager:
 
     @staticmethod
     def load(sim_taskid: str):
+        """
+        Load a Workflow Manager instance from existing objects in the database.
+        :param sim_taskid: The simulation task_id
+        :return: 0=Failed/1=Loaded, error message/instance of the WorkflowManager
+        """
         simulation = MongoWorkflow.get_entry(task_id=sim_taskid)
         if simulation is None:
             return 0, f"No simulation found with id {sim_taskid}, unable to start simulation."
@@ -466,84 +636,46 @@ class WorkflowManager:
         return 1, wf
 
     def define_presim_dependencies(self, dependencies):
-        if isinstance(dependencies, str):
+        """
+        Build the simulation dependency tasks for the graph
+        :param dependencies: List of dependencies
+        :return: None
+        """
+        if isinstance(dependencies, str):               # convert dependencies from string to list, if necessary
             dependencies = json.loads(dependencies.replace("\'", "\""))
+        if type(dependencies) == dict:                  # converts dict to list, occurs with reruns where a db object exists
+            dependencies = [v for k, v in dependencies.items()]
         for dep in dependencies:
             task_id = str(uuid.uuid4())
             if debug_logs:
                 logging.info(f"Simulation Dependency: {dep}")
+            if type(dep) != dict:
+                dep = MongoWorkflow.get_entry(task_id=dep)
             inputs = dep["input"]
-            presim_check = MongoWorkflow.check_hash(dep["url"], inputs)
+            presim_check = MongoWorkflow.check_hash(dep["url"], inputs)     # Checks if this task exists and has been completed already
             if presim_check:
                 presim_task = None
-                task_id = presim_check["_id"]
+                task_id = presim_check
             else:
                 presim_task = dask.delayed(WorkflowManager.execute_dependency)(task_id, dep["name"], dep["url"],
                                                                                inputs, self.debug,
-                                                                               dask_key_name=f"{dep['name']}_{task_id}")
+                                                                               dask_key_name=f"{task_id}")
+                MongoWorkflow.dump_data(task_id=task_id, url=dep["url"], request_input=inputs, name=dep["name"],
+                                        status="PENDING")
             self.pre_sim_ids[dep["name"]] = task_id
             self.pre_sim_tasks[dep["name"]] = presim_task
-
-    def construct(self, catchment_inputs: dict, catchment_dependencies: dict):
-        catchment_tasks = {}
-        first_level = True
-        for level in self.order:
-            for catchment in level:
-                catchment_id = str(uuid.uuid4())
-                catchment = str(catchment)
-                cat_d_ids = copy.copy(self.pre_sim_ids)
-                if first_level or len(self.sources[catchment]) == 0:
-                    cat_dependencies = copy.copy(self.pre_sim_tasks)
-                else:
-                    cat_dependencies = {}
-                self.catchment_ids[catchment] = catchment_id
-                upstream_catchments = {}
-                upstream_ids = {}
-                for c in self.sources[catchment]:
-                    if "_" not in str(c):
-                        upstream_catchments[str(c)] = catchment_tasks[str(c)]
-                        upstream_ids[str(c)] = self.catchment_ids[str(c)]
-                    else:
-                        pcomid = str(c).split("_")
-                        upstream_ids[pcomid[0]] = pcomid[1]
-                cat_d_ids_only = {}
-                for dep in catchment_dependencies[catchment]:
-                    task_id = str(uuid.uuid4())
-                    cat_input = dep["input"]
-                    presim_check = MongoWorkflow.check_hash(dep["url"], cat_input)
-                    if presim_check:
-                        cat_task = None
-                        task_id = presim_check["_id"]
-                        if debug_logs:
-                            logging.info(f"Using data from existing dependency task for COMID: {catchment}, NAME: {dep['name']}, ID: {task_id}")
-                    else:
-                        cat_task = dask.delayed(WorkflowManager.execute_dependency)(task_id, dep["name"], dep["url"],
-                                                                                    cat_input, self.debug,
-                                                                                    dask_key_name=f"{dep['name']}_{task_id}")
-                        if debug_logs:
-                            logging.info(f"Created new dependency task for COMID: {catchment}, NAME: {dep['name']}, ID: {task_id}")
-                    cat_dependencies[dep["name"]] = cat_task
-                    cat_d_ids[dep["name"]] = task_id
-                    cat_d_ids_only[dep["name"]] = task_id
-                catchment_input = catchment_inputs[catchment]
-                MongoWorkflow.create_catchment_entry(self.task_id, catchment_id, catchment_input, status="PENDING",
-                                                     upstream=upstream_ids, dependencies=cat_d_ids_only)
-
-                catchment_task = dask.delayed(self.execute_segment)(self.task_id, catchment_id,
-                                                                    upstream_catchments, upstream_ids, cat_dependencies,
-                                                                    cat_d_ids, self.debug,
-                                                                    dask_key_name=f"{catchment}_{catchment_id}")
-                catchment_tasks[catchment] = catchment_task
-                self.source_ids[catchment] = upstream_ids
-                self.pourpoint = catchment_task
-            first_level = False
-        MongoWorkflow.create_simulation_entry(simulation_id=self.task_id, simulation_input=self.sim_input,
-                                              status="IN-PROGRESS", catchments=self.catchment_ids, order=self.order,
-                                              sources=self.sources, dependencies=self.pre_sim_ids)
+        MongoWorkflow.update_simulation_entry(simulation_id=self.task_id, dependencies=self.pre_sim_ids)
 
     def construct_from_db(self, catchment_ids: dict):
+        """
+        Constructs the dask computational graph from simulation dependencies, catchment dependencies, and the catchment
+        simulation nodes, order and edges determined by stream network and dependency association.
+        :param catchment_ids: A dictionary of catchment ids {COMID:TASK_ID}
+        :return: None
+        """
         catchment_tasks = {}
-        first_level = True
+        first_level = True      # used to assign simulation dependencies as arguments to the catchment simulation node
+        # using the stream network order, reverse BFS starting at the pourpoint going upstream.
         for level in self.order:
             for catchment in level:
                 catchment = str(catchment)
@@ -552,6 +684,8 @@ class WorkflowManager:
                 catchment_dependencies = catchment_entry["dependencies"]
                 cat_d_ids = copy.copy(self.pre_sim_ids)
                 if first_level or len(self.sources[catchment]) == 0:
+                    # if the first level we add the simulation dependency tasks to the catchment dependency task list
+                    # so that all catchment simulations wait until the sim dep tasks are completed.
                     cat_dependencies = copy.copy(self.pre_sim_tasks)
                 else:
                     cat_dependencies = {}
@@ -576,7 +710,7 @@ class WorkflowManager:
                     dep_entry = None
                     if "taskID" in dep.keys():
                         dep_entry = MongoWorkflow.get_entry(task_id=dep["taskID"])
-                    if "input" not in dep:         # TaskID has been given to the dep, object in db
+                    if "input" not in dep:  # TaskID has been given to the dep, object in db
                         logging.info(f"DEP: {dep}")
                         dep_input = dep_entry["input"]
                         dep_url = dep_entry["url"]
@@ -596,7 +730,8 @@ class WorkflowManager:
                         logging.info(f"Presim_check: {presim_check}")
                     if presim_check and not new_task:
                         if debug_logs:
-                            logging.info(f"Using existing dependency task for COMID: {catchment}, Name: {dep['name']}, new_task: {new_task}")
+                            logging.info(
+                                f"Using existing dependency task for COMID: {catchment}, Name: {dep['name']}, new_task: {new_task}")
                             logging.info(f"Dependency taskID: {presim_check}")
                         cat_task = None
                         task_id = presim_check
@@ -616,14 +751,6 @@ class WorkflowManager:
                                                      upstream=upstream_ids, dependencies=cat_d_ids_only)
                 self.source_ids[catchment] = upstream_ids
                 logging.warning(f"COMID: {catchment}, upstream: {upstream_ids}")
-                # catchment_task = dask.delayed(self.execute_segment)(simulation_id=self.task_id,
-                #                                                     catchment_id=catchment_id,
-                #                                                     upstream=upstream_catchments,
-                #                                                     upstream_ids=upstream_ids,
-                #                                                     dependency_task=cat_dependencies,
-                #                                                     dependency_ids=cat_d_ids,
-                #                                                     debug=self.debug,
-                #                                                     dask_key_name=f"{catchment_id}")
                 catchment_task = dask.delayed(self.execute_segment)(self.task_id, catchment_id,
                                                                     upstream_catchments, upstream_ids, cat_dependencies,
                                                                     cat_d_ids, self.debug,
@@ -635,6 +762,11 @@ class WorkflowManager:
         MongoWorkflow.update_simulation_entry(simulation_id=self.task_id, status="IN-PROGRESS")
 
     def compute(self):
+        """
+        Run compute on the completed computational graph. Running compute on the last node, pourpoint, will trigger all
+        the tasks required to complete that node, in the sequence specified by the graph.
+        :return: None
+        """
         try:
             if debug_logs:
                 logging.info(f"Pourpoint TYPE: {type(self.pourpoint)}, VALUE: {self.pourpoint}")
@@ -648,16 +780,28 @@ class WorkflowManager:
     @staticmethod
     @dask.delayed
     def execute_dependency(task_id: str, name: str, url: str, request_input: dict, debug: bool = False):
+        """
+        The function that corresponds to a dependency node task.
+        :param task_id: The task_id
+        :param name: The name of the dependency
+        :param url: The url that will be making a request to.
+        :param request_input: The body for the request
+        :param debug: Run in debug mode (does not make the request and copies the input as the output, for testing)
+        :return: None
+        """
         MongoWorkflow.dump_data(task_id=task_id, url=url, request_input=request_input, name=name, status="IN-PROGRESS")
-        request_url = str(os.getenv('HMS_BACKEND_SERVER_INTERNAL', "http://localhost:60550/")) + url
+        task_target = os.getenv('HMS_WORKFLOW_BACKEND',
+                                os.getenv('HMS_BACKEND_SERVER_INTERNAL', "http://localhost:60550/"))
+        request_url = str(task_target) + url
+        logging.warning(f"Submitting dependency task: {task_id} to url: {request_url}")
         status = "FAILED"
         try:
             if debug:
                 time.sleep(10)
                 data = request_input
             else:
-                logging.info(f"Executing dependency task: {task_id}")
                 dep_data = requests.post(request_url, json=request_input)
+                logging.warning(f"Task ID: {task_id}, response: {dep_data.status_code}")
                 data = json.loads(dep_data.text)
                 if "metadata" in data.keys():
                     if "error" not in data["metadata"].keys():
@@ -668,7 +812,8 @@ class WorkflowManager:
         except Exception as e:
             logging.warning(f"Error: e002, message: {e}")
             data = {"error": f"e002: {str(e)}"}
-        MongoWorkflow.dump_data(task_id=task_id, url=url, request_input=request_input, data=data, name=name, status=status)
+        MongoWorkflow.dump_data(task_id=task_id, url=url, request_input=request_input, data=data, name=name,
+                                status=status)
         logging.info(f"Completed dependency task: {task_id}, status: {status}")
 
     @staticmethod
@@ -676,16 +821,27 @@ class WorkflowManager:
     def execute_segment(simulation_id: str, catchment_id: str, upstream: dict,
                         upstream_ids: dict, dependency_task: dict, dependency_ids: dict,
                         debug: bool = False):
+        """
+        The function that corresponds to a catchment simulation node task.
+        :param simulation_id: The simulation task id
+        :param catchment_id: The catchment simulation task id
+        :param upstream: The upstream segment(s) tasks, used to create a downstream edge between the segments and
+        current catchment node.
+        :param upstream_ids: The upstream segment task ids
+        :param dependency_task: The dependency tasks, used to create an edge between the deps and the catchment node.
+        :param dependency_ids: The dependency task ids
+        :param debug: Run in debug mode, well return static message as the output for testing.
+        :return: None
+        """
         t0 = time.time()
         MongoWorkflow.update_catchment_entry(catchment_id, status="IN-PROGRESS")
         try:
             if debug_logs:
-                logging.warning(f"Upstream_ids: {upstream_ids}")
-                logging.warning(f"Upstream: {upstream}")
-                logging.warning(f"Dependency_task: {dependency_task}")
-                logging.warning(f"Dependency_ids: {dependency_ids}")
+                logging.info(f"Upstream_ids: {upstream_ids}")
+                logging.info(f"Upstream: {upstream}")
+                logging.info(f"Dependency_task: {dependency_task}")
+                logging.info(f"Dependency_ids: {dependency_ids}")
             full_input, valid, message = MongoWorkflow.prepare_inputs(catchment_id=catchment_id, upstream=upstream_ids)
-            # TODO: Check that the dependencies all have status="SUCCESS" otherwise valid=False
         except Exception as e:
             logging.warning(f"Error: e003, message: {e}")
             valid = False
@@ -727,7 +883,7 @@ class WorkflowManager:
                 logging.warning(f"Error: e005, message: {message}")
             t1 = time.time()
             MongoWorkflow.update_catchment_entry(catchment_id=catchment_id, status=status, message=message,
-                                                 output=output, runtime=str(round(t1-t0, 4)))
+                                                 output=output, runtime=str(round(t1 - t0, 4)))
         else:
             MongoWorkflow.update_catchment_entry(catchment_id=catchment_id, status="FAILED", message=message)
         status, sim_message = MongoWorkflow.completion_check(simulation_id=simulation_id)
@@ -736,6 +892,12 @@ class WorkflowManager:
 
     @staticmethod
     def submit_request(catchment_taskid: str, debug: bool = False):
+        """
+        Submit request to hms backend for AQT simulation
+        :param catchment_taskid: The catchment simulation task_id
+        :param debug: run in debug mode
+        :return: the response
+        """
         if debug:
             time.sleep(10)
             return "{'test':'test'}"
@@ -746,12 +908,27 @@ class WorkflowManager:
 
     @staticmethod
     def create_simulation(sim_taskid: str, simulation_dependencies: dict, network: dict):
+        """
+        Create a simulation database object, used in simulation input setup
+        :param sim_taskid: Simulation task id
+        :param simulation_dependencies: The simulation dependencies
+        :param network: The stream network
+        :return: None
+        """
         MongoWorkflow.create_simulation_entry(simulation_id=sim_taskid, simulation_input=None, status="PENDING",
                                               catchments=None, order=network['order'], sources=network['sources'],
                                               dependencies=simulation_dependencies)
 
     @staticmethod
     def create_catchment(sim_taskid: str, catchment_input: dict, comid: str, dependencies: dict = None):
+        """
+        Creates a catchment database object, used in the simulation input setup
+        :param sim_taskid: The simulation task_id
+        :param catchment_input: The inputs for the catchment simulation
+        :param comid: The catchments comid
+        :param dependencies: The dependencies for the catchment
+        :return: 0=Failed/1=Created, error message/catchment task_id
+        """
         sim_check = MongoWorkflow.get_entry(task_id=sim_taskid)
         if sim_check is None:
             return 0, f"No simulation found with id {sim_taskid}, unable to add catchment to simulation."
