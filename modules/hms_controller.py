@@ -499,12 +499,18 @@ class HMSWorkflow(Resource):
                 check_sim = MongoWorkflow.get_entry(task_id=sim_id)
                 if check_sim:
                     if check_sim["type"] == "workflow" and check_sim["status"] in ("PENDING", "IN-PROGRESS",):
-                        MongoWorkflow.kill_simulation(sim_id=sim_id)
-                return MongoWorkflow.get_status(task_id=sim_id)
+                        self.cancel_workflow.apply_async(args=(sim_id,), queue='qed')
+                return Response(json.dumps({"task_id": sim_id, "message": "Cancel request submitted."}))
             else:
                 return Response(json.dumps({"error": "No simulation taskid provided. Requires argument 'sim_id'"}))
 
-        @celery.task(name="HMS Sim Workflow Manager", bind=True)
+        @celery.task(name="HMS Workflow - Cancel", bind=True)
+        def cancel_workflow(self, task_id):
+            logging.info(f"HMS workflow cancel request for: {task_id}")
+            MongoWorkflow.kill_simulation(sim_id=task_id)
+            logging.info(f"HMS workflow cancellation completed for: {task_id}")
+
+        @celery.task(name="HMS Workflow - Execute", bind=True)
         def execute_sim_workflow(self, task_id):
             logging.info("HMS Workflow Manager simulation executed. ID: {}".format(task_id))
             valid, workflow = WorkflowManager.load(sim_taskid=task_id)

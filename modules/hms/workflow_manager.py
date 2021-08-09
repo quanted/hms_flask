@@ -6,12 +6,15 @@ import uuid
 import json
 import copy
 import logging
+
+import distributed.versions
 import pymongo
 import datetime
 import requests
 import time
 import dask
 import hashlib
+import warnings
 from dask.distributed import Client, LocalCluster
 
 timeout = 600  # Timeout for task execution of a single segment 600=10 minutes
@@ -441,19 +444,22 @@ class MongoWorkflow:
                 if exists["status"] != "COMPLETED":
                     same_task = False
                     logging_check.append("status != completed")
-            if "metadata" in exists["output"].keys():  # If there is a reported error in the metadata
-                if "error" in exists["output"]["metadata"].keys() or "ERROR" in exists["output"]["metadata"].keys():
-                    same_task = False
-                    logging_check.append("error in metadata")
-            if "data" in exists["output"].keys():  # If there is no data in the response
-                if len(exists["output"]["data"]) == 0:
-                    same_task = False
-                    logging_check.append("no data in output")
+            if exists["output"]:
+                if "metadata" in exists["output"].keys():  # If there is a reported error in the metadata
+                    if "error" in exists["output"]["metadata"].keys() or "ERROR" in exists["output"]["metadata"].keys():
+                        same_task = False
+                        logging_check.append("error in metadata")
+                if "data" in exists["output"].keys():  # If there is no data in the response
+                    if len(exists["output"]["data"]) == 0:
+                        same_task = False
+                        logging_check.append("no data in output")
             else:
-                logging.info(f"Unable to reuse task due to {', '.join(logging_check)}")
                 same_task = False
+                logging_check.append("no output in results")
             if same_task:
                 return exists["_id"]
+            else:
+                logging.info(f"Unable to reuse task due to {', '.join(logging_check)}")
         return None
 
     @staticmethod
@@ -548,7 +554,8 @@ class MongoWorkflow:
             if sim_entry["type"] == "workflow":
                 pourpoint = str(list(sim_entry["catchment_sources"].keys())[-1])
                 pourpoint_id = sim_entry["catchments"][pourpoint]
-                client = Client("dask-scheduler:8786", timeout=2)
+                scheduler = os.getenv('DASK_SCHEDULER', "tcp://127.0.0.1:8786")
+                client = Client(scheduler, timeout=2)
                 pourpoint_future = dask.distributed.Future(key=pourpoint_id, client=client)
                 pourpoint_future.cancel()
             MongoWorkflow.set_sim_status(task_id=sim_id, status="CANCELLED", replace_completed=False)
@@ -805,7 +812,7 @@ class WorkflowManager:
         task_target = os.getenv('HMS_WORKFLOW_BACKEND',
                                 os.getenv('HMS_BACKEND_SERVER_INTERNAL', "http://localhost:60550/"))
         request_url = str(task_target) + url
-        logging.warning(f"Submitting dependency task: {task_id} to url: {request_url}")
+        logging.warning(f"Submitting dependency task: {task_id} to url: {request_url} for comid: {comid}")
         status = "FAILED"
         try:
             message = ""
@@ -851,6 +858,7 @@ class WorkflowManager:
         :return: None
         """
         t0 = time.time()
+        logging.warning(f"Starting catchment simulation task, COMID: {comid}, id: {catchment_id}")
         MongoWorkflow.update_catchment_entry(catchment_id, status="IN-PROGRESS",
                                              message=f"Starting catchment simulation for catchment {comid}")
         try:
@@ -876,7 +884,6 @@ class WorkflowManager:
         if valid:
             output = None
             try:
-                logging.warning(f"Executing catchment task: {catchment_id}")
                 output = WorkflowManager.submit_request(catchment_id, debug)
                 try:
                     output = json.loads(output)
@@ -906,7 +913,7 @@ class WorkflowManager:
             MongoWorkflow.update_catchment_entry(catchment_id=catchment_id, status="FAILED", message=message)
         status, sim_message = MongoWorkflow.completion_check(simulation_id=simulation_id)
         MongoWorkflow.update_simulation_entry(simulation_id=simulation_id, status=status, message=message)
-        logging.warning(f"Completed catchment task: {catchment_id}")
+        logging.warning(f"Completed catchment comid: {comid}, task: {catchment_id}")
 
     @staticmethod
     def submit_request(catchment_taskid: str, debug: bool = False):
