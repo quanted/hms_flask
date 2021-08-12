@@ -827,9 +827,14 @@ class WorkflowManager:
                     if "error" not in data["metadata"].keys() or "ERROR" not in data["metadata"].keys():
                         status = "COMPLETED"
                         message = f"Completed data retrieval task for {name} in catchment {comid}"
+                    else:
+                        message = f"Failed data retrieval task for {name} in catchment {comid}, error in processing."
+
                 if "data" in data.keys() and status == "COMPLETED":
-                    if len(data["data"]) > 0:
-                        status = "COMPLETED"
+                    if len(data["data"]) == 0:
+                        status = "FAILED"
+                        message = f"Failed data retrieval task for {name} in catchment {comid}, no output data."
+                    else:
                         message = f"Completed data retrieval task for {name} in catchment {comid}"
         except Exception as e:
             logging.warning(f"Error: e002, message: {e}")
