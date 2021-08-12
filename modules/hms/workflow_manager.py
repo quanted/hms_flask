@@ -824,10 +824,10 @@ class WorkflowManager:
                 logging.warning(f"Task ID: {task_id}, response: {dep_data.status_code}")
                 data = json.loads(dep_data.text)
                 if "metadata" in data.keys():
-                    if "error" not in data["metadata"].keys():
+                    if "error" not in data["metadata"].keys() or "ERROR" not in data["metadata"].keys():
                         status = "COMPLETED"
                         message = f"Completed data retrieval task for {name} in catchment {comid}"
-                if "data" in data.keys():
+                if "data" in data.keys() and status == "COMPLETED":
                     if len(data["data"]) > 0:
                         status = "COMPLETED"
                         message = f"Completed data retrieval task for {name} in catchment {comid}"
