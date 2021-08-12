@@ -829,9 +829,8 @@ class WorkflowManager:
                         message = f"Completed data retrieval task for {name} in catchment {comid}"
                     else:
                         message = f"Failed data retrieval task for {name} in catchment {comid}, error in processing."
-
                 if "data" in data.keys() and status == "COMPLETED":
-                    if len(data["data"]) == 0:
+                    if len(data["data"].keys()) == 0:
                         status = "FAILED"
                         message = f"Failed data retrieval task for {name} in catchment {comid}, no output data."
                     else:
