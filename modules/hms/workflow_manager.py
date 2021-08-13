@@ -7,14 +7,12 @@ import json
 import copy
 import logging
 
-import distributed.versions
 import pymongo
 import datetime
 import requests
 import time
 import dask
 import hashlib
-import warnings
 from dask.distributed import Client, LocalCluster
 
 timeout = 600  # Timeout for task execution of a single segment 600=10 minutes
@@ -37,13 +35,9 @@ class MongoWorkflow:
         database = 'hms_workflows'
         if not in_docker:
             # Dev env mongoDB
-            if debug_logs:
-                logging.info("Connecting to mongoDB at: mongodb://localhost:27017/0")
             mongo = pymongo.MongoClient(host='mongodb://localhost:27017/0')
         else:
             # Production env mongoDB
-            if debug_logs:
-                logging.info("Connecting to mongoDB at: mongodb://mongodb:27017/0")
             mongo = pymongo.MongoClient(host='mongodb://mongodb:27017/0')
         mongo[database].Collection.create_index([("timestamp", pymongo.DESCENDING)], expireAfterSeconds=604800)
 
@@ -400,7 +394,8 @@ class MongoWorkflow:
         mongo = MongoWorkflow.connect_to_mongodb()
         mongo_db = MongoWorkflow.get_collection(mongo)
         posts = mongo_db["data"]
-        hash = hashlib.md5((url.lower() + json.dumps(request_input, sort_keys=True)).encode()).hexdigest()
+        hash = hashlib.md5((url.lower() + json.dumps(request_input, sort_keys=True)).encode()).hexdigest() if not exists else exists["hash"]
+        logging.info(f"Dependency {name} has hash {hash}, already present: {True if exists else False}")
         dep_data = {
             "_id": task_id,
             "type": data_type,
@@ -457,9 +452,12 @@ class MongoWorkflow:
                 same_task = False
                 logging_check.append("no output in results")
             if same_task:
+                logging.info(f"Found existing task {exists['_id']} for hash: {hash}")
                 return exists["_id"]
             else:
                 logging.info(f"Unable to reuse task due to {', '.join(logging_check)}")
+        else:
+            logging.info(f"No existing data found in the database for hash: {hash}")
         return None
 
     @staticmethod
@@ -725,16 +723,16 @@ class WorkflowManager:
                     dep_entry = None
                     if "taskID" in dep.keys():
                         dep_entry = MongoWorkflow.get_entry(task_id=dep["taskID"])
-                    if "input" not in dep:  # TaskID has been given to the dep, object in db
+                    if "input" not in dep and dep_entry:  # TaskID has been given to the dep, object in db
                         logging.info(f"DEP: {dep}")
                         dep_input = dep_entry["input"]
                         dep_url = dep_entry["url"]
                         task_id = dep["taskID"]
-                        if "status" in dep_entry.keys():
-                            if dep_entry["status"] != "COMPLETED":
-                                new_task = True
-                        else:
-                            new_task = True
+                        # if "status" in dep_entry.keys():
+                        #     if dep_entry["status"] != "COMPLETED":
+                        #         new_task = True
+                        # else:
+                        #     new_task = True
                     else:
                         new_task = True
                         task_id = str(uuid.uuid4())
@@ -743,7 +741,7 @@ class WorkflowManager:
                     presim_check = MongoWorkflow.check_hash(dep_url, dep_input)
                     if debug_logs:
                         logging.info(f"Presim_check: {presim_check}")
-                    if presim_check and not new_task:
+                    if presim_check:
                         if debug_logs:
                             logging.info(
                                 f"Using existing dependency task for COMID: {catchment}, Name: {dep['name']}, new_task: {new_task}")
