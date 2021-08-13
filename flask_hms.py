@@ -4,7 +4,25 @@ import os
 import logging
 
 # Import modules
-from hms_flask.modules import hms_controller
+from hms_flask.modules import hms_controller, hms_data
+
+from logging.config import dictConfig
+
+dictConfig({
+    'version': 1,
+    'formatters': {'default': {
+        'format': '[%(asctime)s] %(levelname)s in %(module)s: %(message)s',
+    }},
+    'handlers': {'wsgi': {
+        'class': 'logging.StreamHandler',
+        'stream': 'ext://flask.logging.wsgi_errors_stream',
+        'formatter': 'default'
+    }},
+    'root': {
+        'level': 'DEBUG',
+        'handlers': ['wsgi']
+    }
+})
 
 app = Flask(__name__)
 app.config.update(
@@ -16,7 +34,7 @@ PROJECT_ROOT = os.path.abspath(os.path.dirname(__file__))
 os.environ.update({
     'PROJECT_ROOT': PROJECT_ROOT
 })
-logging.basicConfig(level=logging.DEBUG)
+# logging.basicConfig(level=logging.DEBUG)
 
 
 class StatusTest(Resource):
@@ -32,6 +50,10 @@ api.add_resource(hms_controller.HMSFlaskTest, '/gis/test/')
 # HMS endpoints
 # Data retrieval endpoint
 api.add_resource(hms_controller.HMSTaskData, '/data')
+
+logging.info(base_url + "/task/revoke/")
+api.add_resource(hms_controller.HMSRevokeTask, '/task/revoke/')
+
 logging.info(base_url + "/gis/ncdc/stations/")
 api.add_resource(hms_controller.NCDCStationSearch, '/gis/ncdc/stations/')
 logging.info(base_url + "/gis/percentage/")
@@ -45,10 +67,22 @@ api.add_resource(hms_controller.Hydrodynamics, '/hydrodynamic/constant_volume/')
 
 logging.info(base_url + "/nwm/data/")
 api.add_resource(hms_controller.NWMDownload, '/nwm/data/')
-
 logging.info(base_url + "/nwm/forecast/short_term")
 api.add_resource(hms_controller.NWMDataShortTerm, "/nwm/forecast/short_term")
 
+logging.info(base_url + "/data/curvenumber/")
+api.add_resource(hms_data.HMSCurveNumberData, "/data/curvenumber/")
+
+# logging.info(base_url + "/workflow/")
+# api.add_resource(hms_controller.HMSWorkflow, "/workflow/")
+logging.info(base_url + "/workflow/status/")
+api.add_resource(hms_controller.HMSWorkflow.Status, "/workflow/status/")
+logging.info(base_url + "/workflow/data/")
+api.add_resource(hms_controller.HMSWorkflow.Data, "/workflow/data/")
+logging.info(base_url + "/workflow/compute/")
+api.add_resource(hms_controller.HMSWorkflow.Simulation, "/workflow/compute/")
+logging.info(base_url + "/workflow/download/")
+api.add_resource(hms_controller.HMSWorkflow.Download, "/workflow/download/")
 #logging.info(base_url + "/hydrodynamics/constant_volume/")
 #api.add_resource(hms_controller.Hydrodynamics.constant_volume, '/hydrodynamics/constant_volume/')
 

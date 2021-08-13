@@ -1,5 +1,5 @@
 from shapely.geometry import Point, shape
-from fiona.crs import from_epsg
+# from fiona.crs import from_epsg
 import geopandas as geo
 import math
 import logging
@@ -13,8 +13,9 @@ class NCDCStations:
     def findStationsInGeoJson(geojson, startDate=None, endDate=None, crs=None):
         logging.info("HMS Celery task: searching for NCDC Stations with geojson bounds. process starting...")
         geometry = geo.GeoDataFrame.from_features(geojson)
-        if crs is not None and crs is not "4326":
-            geometry.crs = from_epsg(crs)
+        if crs is not None and crs != "4326":
+            # geometry.crs = from_epsg(crs)
+            geometry.crs = {'init': 'epsg:' + str(crs), 'no_defs': True}
             geometry = geometry.to_crs({'init': 'epsg:326'})
             geojson = json.loads(geometry.to_json())
             extent = geometry.total_bounds
@@ -36,7 +37,8 @@ class NCDCStations:
         lng = float(lng)
         df = geo.GeoDataFrame()
         df['geometry'] = Point(lng, lat)
-        df.crs = from_epsg("4326")
+        # df.crs = from_epsg("4326")
+        df.crs = {'init': 'epsg:4326', 'no_defs': True}
         bounds_list = []
         i = 1
         i_max = 10

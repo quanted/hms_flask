@@ -1,12 +1,17 @@
-from flask import Response
-from flask_restful import Resource, reqparse, request
+import io
+
+from flask import Response, send_file
+from flask_restful import Resource, reqparse, request, Api
 import pymongo as pymongo
 from datetime import datetime
+from io import BytesIO
+import time
 import uuid
 import requests
 import logging
 import json
 import os
+import zipfile
 
 from celery_cgi import celery
 
@@ -14,8 +19,11 @@ from celery_cgi import celery
 from .hms.ncdc_stations import NCDCStations
 from .hms.percent_area import CatchmentGrid
 from .hms.hydrodynamics import FlowRouting
+from .hms.nwm_reanalysis import NWM
 from .hms.nwm_data import NWMData
 from .hms.nwm_forecast import NWMForecastData
+from .hms.workflow_manager import WorkflowManager, MongoWorkflow
+
 
 IN_DOCKER = os.environ.get("IN_DOCKER")
 NWM_TASK_COUNT = 0
@@ -33,10 +41,10 @@ def connect_to_mongoDB(database=None):
         logging.info("Connecting to mongoDB at: mongodb://mongodb:27017/0")
         mongo = pymongo.MongoClient(host='mongodb://mongodb:27017/0')
     mongo_db = mongo[database]
-    if database is 'flask_hms':
+    if database == 'flask_hms':
         mongo.flask_hms.Collection.create_index([("date", pymongo.DESCENDING)], expireAfterSeconds=86400)
         # ALL entries into mongo.flask_hms must have datetime.utcnow() timestamp, which is used to delete the record after 86400 seconds, 24 hours.
-    elif database is 'nwm_data':
+    elif database == 'nwm_data':
         mongo.nwm_data.Collection.create_index([("date", pymongo.DESCENDING)], expireAfterSeconds=64800)    # 18 hr
     else:
         mongo[database].Collection.create_index([("date", pymongo.DESCENDING)], expireAfterSeconds=604800)
@@ -63,18 +71,23 @@ class HMSTaskData(Resource):
                 mongo_db = connect_to_mongoDB("hms")
                 posts = mongo_db["data"]
                 posts_data = posts.find_one({'_id': task_id})
-                if not posts_data:
-                    mongo_db = connect_to_mongoDB("hms")
-                    db = mongo_db["data"]
-                    posts_data = db.find_one({'_id': task_id})
-                data = json.loads(json.dumps(posts_data['data']))
+                if posts_data is None:
+                    data = None
+                    print("No data for mongodb: hms, posts: data, id: {}".format(task_id))
+                else:
+                    data = json.loads(json.dumps(posts_data['data']))
                 return Response(json.dumps({'id': task.id, 'status': task.status, 'data': data}))
             else:
                 try:
                     mongo_db = connect_to_mongoDB("hms")
                     db = mongo_db["data"]
                     posts_data = db.find_one({'_id': task_id})
-                    data = json.loads(posts_data['data'])
+                    if isinstance(posts_data['data'], str):
+                        data = json.loads(posts_data['data'])
+                    elif isinstance(posts_data['data'], dict):
+                        data = posts_data['data']
+                    else:
+                        data = None
                     if data is not None:
                         status = "SUCCESS"
                     else:
@@ -102,6 +115,22 @@ class HMSFlaskTest(Resource):
         data_value = {"request_time": str(time_stamp)}
         data = {'_id': task_id, 'date': time_stamp, 'data': json.dumps(data_value)}
         posts.insert_one(data)
+
+
+class HMSRevokeTask(Resource):
+    parser = parser_base.copy()
+    parser.add_argument('task_id')
+
+    def get(self):
+        args = self.parser.parse_args()
+        task_id = args.task_id
+        try:
+            celery.control.revoke(task_id, terminate=True, signal='SIGKILL')
+            message = f"Successfully cancelled task: {task_id}"
+        except Exception as e:
+            message = f"Error attempting to cancel task: {task_id}, message: {e}"
+        logging.info(message)
+        return Response(json.dumps({'task_id': task_id, 'result': message}))
 
 
 class NCDCStationSearch(Resource):
@@ -165,35 +194,50 @@ class NWMDownload(Resource):
     parser.add_argument('comid')
     parser.add_argument('startDate')
     parser.add_argument('endDate')
-    parser.add_argument('long')
-    parser.add_argument('lat')
+    parser.add_argument('timestep')
 
     def get(self):
         args = self.parser.parse_args()
         task_id = self.start_async.apply_async(
-            args=(args.dataset, args.comid, args.startDate, args.endDate, args.lat, args.long), queue="qed")
+            args=(args.dataset, args.comid, args.startDate, args.endDate, args.timestep), queue="qed")
         return Response(json.dumps({'job_id': task_id.id}))
 
+        # task_id = str(uuid.uuid4())
+        # self.start_async(args.dataset, args.comid, args.startDate, args.endDate, uuid=task_id)
+        # return Response(json.dumps({'job_id': task_id}))
+
     @celery.task(name='hms_nwm_data', bind=True)
-    def start_async(self, dataset, comid, startDate, endDate, lat, long):
-        task_id = celery.current_task.request.id
-        logging.info("task_id: {}".format(task_id))
-        logging.info("hms_controller.NWMDownload starting calculation...")
-        global NWM_TASK_COUNT
-        NWM_TASK_COUNT += 1
-        logging.info("NWM TASK COUNT: " + str(NWM_TASK_COUNT))
-        logging.info("inputs id: {}, {}, {}, {}".format(dataset, comid, startDate, endDate, NWM_TASK_COUNT))
-        if(endDate):
-            nwm_data = NWMData.JSONData(dataset, comid, startDate, endDate, lat, long, NWM_TASK_COUNT)
+    def start_async(self, dataset, comid, startDate, endDate, uuid=None):
+        if uuid:
+            task_id = uuid
         else:
-            nwm_data = NWMData.NetCDFData(dataset, comid, startDate)
-        logging.info("hms_controller.NWMDownload calcuation completed.")
+            task_id = celery.current_task.request.id
+        comids = comid.split(",")
+        logging.info("task_id: {}".format(task_id))
+        logging.info("hms_controller.NWM download starting...")
+        logging.info("inputs id: {}, {}, {}, {}".format(dataset, comids, startDate, endDate))
+        time0 = time.time()
+        try:
+            nwm = NWM(start_date=startDate, end_date=endDate, comids=comids)
+            nwm.request_timeseries()
+            nwm.set_output()
+        except Exception as e:
+            logging.warning(f"Error attempting to retrieve NWM data: {e}")
+            return
+        time1 = time.time()
+        logging.info("NWM timeseries runtime: {} sec ".format((round(time1-time0, 4))))
+        logging.info("hms_controller.NWM download completed.")
         logging.info("Adding data to mongoDB...")
         mongo_db = connect_to_mongoDB("hms")
         posts = mongo_db["data"]
         time_stamp = datetime.utcnow()
-        data = {'_id': task_id, 'date': time_stamp, 'data': nwm_data}
-        posts.insert_one(data)
+        data = {'_id': task_id, 'date': time_stamp, 'data': nwm.output.to_dict()}
+        query = {'_id': task_id}
+        exists = posts.find_one(query)
+        if exists:
+            posts.replace(query, data)
+        else:
+            posts.insert_one(data)
 
 
 class NLDASGridCells(Resource):
@@ -255,7 +299,7 @@ class Hydrodynamics(Resource):
         if args.startDate is None or args.endDate is None:
             return Response("{'input error':'Arguments startDate and endDate are required.")
         if use_celery:
-            if args.submodel is 'constant_volume':
+            if args.submodel == 'constant_volume':
                 job_id = self.CV_start_async.apply_async(
                     args=(args.startDate, args.endDate, args.timestep, args.boundary_flow, args.segments),
                     queue="qed")  # DO STUFF with args, validation
@@ -293,7 +337,6 @@ class ProxyDNC2(Resource):
     """
 
     """
-
     def post(self, model=None):
         request_url = model + "/"
         request_body = request.json
@@ -368,3 +411,212 @@ class NWMDataShortTerm(Resource):
         data = {'_id': job_id, 'date': time_stamp, 'data': comid_data}
         db.insert_one(data)
         logging.info("NWM short term forecast data call completed. ID: {}".format(job_id))
+
+
+class HMSWorkflow(Resource):
+    """
+    HMS WorkflowManager
+    """
+    # parser = parser_base.copy()
+    # parser.add_argument('sim_input', type=dict)
+    # parser.add_argument('comid_inputs', type=dict)
+    # parser.add_argument('network', type=dict)
+    # parser.add_argument("simulation_dependencies")
+    # parser.add_argument("catchment_dependencies", type=dict)
+
+    class Simulation(Resource):
+        sim_parser = parser_base.copy()
+        sim_parser.add_argument('sim_id', type=str)
+        sim_parser.add_argument('comid_input', type=dict)
+        sim_parser.add_argument('network', type=dict)
+        sim_parser.add_argument("simulation_dependencies", type=list)
+        sim_parser.add_argument("catchment_dependencies", type=list)
+
+        def post(self):
+            args = request.get_json(force=True)
+            new_sim = False
+            if 'sim_id' in args.keys():
+                sim_id = args['sim_id']
+            else:
+                new_sim = True
+                sim_id = str(uuid.uuid4())
+            if 'network' in args.keys():
+                sim_deps = None
+                if 'simulation_dependencies' in args.keys():
+                    sim_deps = args['simulation_dependencies']
+                if not new_sim:
+                    check_sim = MongoWorkflow.get_entry(task_id=sim_id)
+                    if check_sim["status"] == "IN-PROGRESS":
+                        return Response(json.dumps({"error": "Unable to modify a currently running simulation."}))
+                WorkflowManager.create_simulation(
+                    sim_taskid=sim_id,
+                    simulation_dependencies=sim_deps,
+                    network=args['network'])
+                logging.info(f"New simulation created with id: {sim_id}")
+            elif new_sim:
+                return Response(json.dumps({"error": "A network must be provided with a new simulation."}))
+            valid = 1
+            cat_id = None
+            if 'comid_input' in args:
+                cat_deps = None
+                if 'catchment_dependencies' in args:
+                    cat_deps = args['catchment_dependencies']
+                valid, cat_id = WorkflowManager.create_catchment(
+                    sim_taskid=sim_id,
+                    catchment_input=args['comid_input']["input"],
+                    comid=args['comid_input']["comid"],
+                    dependencies=cat_deps
+                )
+                logging.info(f"New catchment added to simulation: {sim_id}, COMID: {args['comid_input']['comid']}")
+            if valid == 1:
+                return MongoWorkflow.get_status(task_id=sim_id)
+            else:
+                return Response(json.dumps({"error": cat_id}))
+
+        def get(self):
+            args = self.sim_parser.parse_args()
+            if args.sim_id:
+                sim_id = str(args.sim_id)
+                try:
+                    valid, msg = MongoWorkflow.simulation_run_ready(task_id=sim_id)
+                except Exception as e:
+                    logging.warning(f"No simulation found for execution with taskID: {sim_id}")
+                    return Response(json.dumps({"error": f"No simulation found with taskID:{sim_id}"}))
+                if valid == 0:
+                    return Response(json.dumps({"error": str(msg)}))
+                else:
+                    logging.info(f"Executing HMS workflow simulation with ID: {sim_id}")
+                    MongoWorkflow.set_sim_status(task_id=sim_id, status="PENDING")
+                    output = self.execute_sim_workflow.apply_async(args=(sim_id,), task_id=sim_id, queue='qed')
+                    return MongoWorkflow.get_status(task_id=sim_id)
+            else:
+                return Response(json.dumps({"error": "No simulation taskID provided. Requires argument 'sim_id'"}))
+
+        def delete(self):
+            args = self.sim_parser.parse_args()
+            if args.sim_id:
+                sim_id = str(args.sim_id)
+                check_sim = MongoWorkflow.get_entry(task_id=sim_id)
+                if check_sim:
+                    if check_sim["type"] == "workflow" and check_sim["status"] in ("PENDING", "IN-PROGRESS",):
+                        self.cancel_workflow.apply_async(args=(sim_id,), queue='qed')
+                return Response(json.dumps({"task_id": sim_id, "message": "Cancel request submitted."}))
+            else:
+                return Response(json.dumps({"error": "No simulation taskid provided. Requires argument 'sim_id'"}))
+
+        @celery.task(name="HMS Workflow - Cancel", bind=True)
+        def cancel_workflow(self, task_id):
+            logging.info(f"HMS workflow cancel request for: {task_id}")
+            MongoWorkflow.kill_simulation(sim_id=task_id)
+            logging.info(f"HMS workflow cancellation completed for: {task_id}")
+
+        @celery.task(name="HMS Workflow - Execute", bind=True)
+        def execute_sim_workflow(self, task_id):
+            logging.info("HMS Workflow Manager simulation executed. ID: {}".format(task_id))
+            valid, workflow = WorkflowManager.load(sim_taskid=task_id)
+            if valid == 0:
+                MongoWorkflow.update_simulation_entry(simulation_id=task_id, status="FAILED", message=workflow)
+            else:
+                simulation_entry = MongoWorkflow.get_entry(task_id=task_id)
+                simulation_dependencies = simulation_entry["dependencies"]
+                workflow.define_presim_dependencies(simulation_dependencies)
+                workflow.construct_from_db(catchment_ids=simulation_entry["catchments"])
+                workflow.compute()
+                logging.info(f"HMS Workflow Manager simulation completed. ID: {task_id}")
+
+    class Status(Resource):
+        parser = parser_base.copy()
+        parser.add_argument("task_id", location='args')
+
+        def get(self):
+            args = self.parser.parse_args()
+            status = MongoWorkflow.get_status(task_id=args.task_id)
+            return status
+
+    class Data(Resource):
+        parser = parser_base.copy()
+        parser.add_argument("task_id", location='args')
+        parser.add_argument("input", type=bool, default=False)
+        parser.add_argument("output", type=bool, default=False)
+
+        def get(self):
+            args = self.parser.parse_args()
+            data = MongoWorkflow.get_data(task_id=args.task_id)
+            if data["type"] != "workflow":
+                if not args.input:
+                    del data["input"]
+                if not args.output:
+                    del data["output"]
+            return data
+
+    class Download(Resource):
+        parser = parser_base.copy()
+        parser.add_argument("task_id", location='args', required=True)
+
+        def get(self):
+            args = self.parser.parse_args()
+            wk_entry = MongoWorkflow.get_entry(task_id=args.task_id)
+            if wk_entry:
+                file_out = io.BytesIO()
+                file_name = None
+                if wk_entry["type"] == "workflow":
+                    file_name = f"workflow_{args.task_id}.zip"
+                    with zipfile.ZipFile(file_out, "w", compression=zipfile.ZIP_DEFLATED) as wk_zip:
+                        wk_file_name = "workflow_details.json"
+                        wk_file_data = MongoWorkflow.get_status(task_id=args.task_id)
+                        wk_zip.writestr(wk_file_name, data=json.dumps(wk_file_data))
+                        for comid, catchment_id in wk_entry["catchments"].items():
+                            cat_entry = MongoWorkflow.get_entry(task_id=catchment_id)
+                            wk_zip.writestr(f"{comid}_input.json", data=cat_entry["input"])
+                            if cat_entry["output"]:
+                                wk_zip.writestr(f"{comid}_output.json", data=cat_entry["output"])
+                            if type(cat_entry["dependencies"]) == dict:
+                                for dep, dep_id in cat_entry["dependencies"].items():
+                                    dep_name = f"{comid}-{dep}"
+                                    dep_entry = MongoWorkflow.get_entry(task_id=dep_id)
+                                    wk_zip.writestr(f"{dep_name}_input.json", data=json.dumps(dep_entry["input"]))
+                                    if dep_entry["output"]:
+                                        wk_zip.writestr(f"{dep_name}_output.json", data=json.dumps(dep_entry["output"]))
+                        wk_data = MongoWorkflow.get_entry(task_id=args.task_id)
+                        if type(wk_data["dependencies"]) == dict:
+                            for dep_name, dep_id in wk_data["dependencies"].items():
+                                dep_entry = MongoWorkflow.get_entry(task_id=dep_id)
+                                dep_name = f"workflow-{dep_entry['name']}"
+                                wk_zip.writestr(f"{dep_name}_input.json", data=json.dumps(dep_entry["input"]))
+                                if dep_entry["output"]:
+                                    wk_zip.writestr(f"{dep_name}_output.json", data=json.dumps(dep_entry["output"]))
+                elif wk_entry["type"] == "catchment":
+                    cat_entry = wk_entry
+                    sim_entry = MongoWorkflow.get_entry(task_id=cat_entry["sim_id"])
+                    comid = None
+                    for c, catchment_id in sim_entry["catchments"].items():
+                        if catchment_id == args.task_id:
+                            comid = c
+                            break
+                    file_name = f"{comid}_{args.task_id}.zip"
+                    with zipfile.ZipFile(file_out, "w", compression=zipfile.ZIP_DEFLATED) as wk_zip:
+                        wk_zip.writestr(f"{comid}_input.json", data=cat_entry["input"])
+                        if cat_entry["output"]:
+                            wk_zip.writestr(f"{comid}_output.json", data=cat_entry["output"])
+                        for dep, dep_id in cat_entry["dependencies"].items():
+                            dep_name = f"{comid}-{dep}"
+                            dep_entry = MongoWorkflow.get_entry(task_id=dep_id)
+                            wk_zip.writestr(f"{dep_name}_input.json", data=json.dumps(dep_entry["input"]))
+                            if dep_entry["output"]:
+                                wk_zip.writestr(f"{dep_name}_output.json", data=json.dumps(dep_entry["output"]))
+                else:       # dependency
+                    file_name = f"{wk_entry['name']}_{args.task_id}.zip"
+                    with zipfile.ZipFile(file_out, "w", compression=zipfile.ZIP_DEFLATED) as wk_zip:
+                        wk_zip.writestr(f"{wk_entry['name']}_input.json", data=json.dumps(wk_entry["input"]))
+                        if wk_entry["output"]:
+                            wk_zip.writestr(f"{wk_entry['name']}_output.json", data=json.dumps(wk_entry["output"]))
+                file_out.seek(0)
+                response = send_file(
+                    BytesIO(file_out.read()),
+                    mimetype='application/zip',
+                    as_attachment=True,
+                    download_name=file_name
+                )
+                response.headers["x-suggested-filename"] = file_name
+                return response
+            return Response(json.dumps({"error": f"No object found for task_id: {args.task_id}"}))
