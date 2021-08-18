@@ -6,7 +6,9 @@ import uuid
 import json
 import copy
 import logging
+import sys
 
+import gridfs
 import pymongo
 import datetime
 import requests
@@ -55,6 +57,26 @@ class MongoWorkflow:
         return mongo_db
 
     @staticmethod
+    def stash_bigdata(mongo_db, data):
+        if not data:
+            return None
+        fs = gridfs.GridFS(mongo_db)
+        data = data if type(data) == str else json.dumps(data)
+        data_id = fs.put(data.encode("utf-8"))
+        if debug_logs:
+            data_size = sys.getsizeof(data)
+            logging.warning(f"GridFS object: {data_id}, size: {data_size/1048576} Mb")
+        return data_id
+
+    @staticmethod
+    def get_bigdata(mongo_db, data_id):
+        if not data_id:
+            return None
+        fs = gridfs.GridFS(mongo_db)
+        data = fs.get(data_id).read().decode("utf-8")
+        return data
+
+    @staticmethod
     def create_simulation_entry(simulation_id: str, simulation_input: dict = None, status: str = None,
                                 catchments=None, order: list = None, sources: list = None, dependencies: dict = None):
         """
@@ -80,10 +102,11 @@ class MongoWorkflow:
         if catchments is None:
             catchments = {}
         time_stamp = str(datetime.datetime.utcnow())
+        input_id = MongoWorkflow.stash_bigdata(mongo_db=mongo_db, data=json.dumps(simulation_input))
         data = {
             "_id": simulation_id,
             "type": "workflow",
-            "input": json.dumps(simulation_input),
+            "input": input_id,
             "status": status,
             "update_time": timestamp,
             "message": None,
@@ -118,11 +141,12 @@ class MongoWorkflow:
         if data is not None:
             posts.delete_one(query)
         time_stamp = str(datetime.datetime.utcnow())
+        input_id = MongoWorkflow.stash_bigdata(mongo_db=mongo_db, data=json.dumps(catchment_input))
         data = {
             "_id": catchment_id,
             "type": "catchment",
             "sim_id": simulation_id,
-            "input": json.dumps(catchment_input),
+            "input": input_id,
             "status": status,
             "update_time": timestamp,
             "message": None,
@@ -214,7 +238,8 @@ class MongoWorkflow:
         if message:
             data["message"] = message
         if output:
-            data["output"] = json.dumps(output)
+            output_id = MongoWorkflow.stash_bigdata(mongo_db=mongo_db, data=json.dumps(output))
+            data["output"] = output_id
         if runtime:
             data["runtime"] = runtime
         if upstream:
@@ -363,14 +388,20 @@ class MongoWorkflow:
         if data is None:
             return {"error": f"No data found for a task with id: {task_id}"}
         if data["type"] == "workflow":
-            data["input"] = json.loads(data["input"])
+            input_data = json.loads(MongoWorkflow.get_bigdata(mongo_db=mongo_db, data_id=data["input"]))
+            data["input"] = input_data
             return data
         elif data["type"] == "dependency":
+            if data["output"]:
+                output_data = json.loads(MongoWorkflow.get_bigdata(mongo_db=mongo_db, data_id=data["output"]))
+                data["output"] = output_data
             return data
         else:
-            data["input"] = json.loads(data["input"])
-            if type(data["output"]) == str:
-                data["output"] = json.loads(data["output"])
+            input_data = json.loads(MongoWorkflow.get_bigdata(mongo_db=mongo_db, data_id=data["input"]))
+            data["input"] = input_data
+            if data["output"]:
+                output_data = json.loads(MongoWorkflow.get_bigdata(mongo_db=mongo_db, data_id=data["output"]))
+                data["output"] = output_data
             return data
 
     @staticmethod
@@ -396,12 +427,13 @@ class MongoWorkflow:
         posts = mongo_db["data"]
         hash = hashlib.md5((url.lower() + json.dumps(request_input, sort_keys=True)).encode()).hexdigest() if not exists else exists["hash"]
         logging.info(f"Dependency {name} has hash {hash}, already present: {True if exists else False}")
+        output_id = MongoWorkflow.stash_bigdata(mongo_db=mongo_db, data=data)
         dep_data = {
             "_id": task_id,
             "type": data_type,
             "url": url,
             "name": name,
-            "output": data,
+            "output": output_id,
             "input": request_input,
             "hash": hash,
             "status": status,
@@ -440,12 +472,14 @@ class MongoWorkflow:
                     same_task = False
                     logging_check.append("status != completed")
             if exists["output"]:
-                if "metadata" in exists["output"].keys():  # If there is a reported error in the metadata
-                    if "error" in exists["output"]["metadata"].keys() or "ERROR" in exists["output"]["metadata"].keys():
+                output = MongoWorkflow.get_bigdata(mongo_db=mongo_db, data_id=exists["output"])
+                output = json.loads(output) if type(output) == str else output
+                if "metadata" in output.keys():  # If there is a reported error in the metadata
+                    if "error" in output["metadata"].keys() or "ERROR" in output["metadata"].keys():
                         same_task = False
                         logging_check.append("error in metadata")
-                if "data" in exists["output"].keys():  # If there is no data in the response
-                    if len(exists["output"]["data"]) == 0:
+                if "data" in output.keys():  # If there is no data in the response
+                    if len(output["data"]) == 0:
                         same_task = False
                         logging_check.append("no data in output")
             else:
@@ -476,6 +510,14 @@ class MongoWorkflow:
         if data is None:
             return None
         else:
+            if "input" in data.keys():
+                if data["input"] and type(data["input"]) == str:
+                    input_data = MongoWorkflow.get_bigdata(mongo_db=mongo_db, data_id=data["input"])
+                    data["input"] = json.loads(input_data) if type(input_data) == str else input_data
+            if "output" in data.keys():
+                if data["output"]:
+                    output_data = MongoWorkflow.get_bigdata(mongo_db=mongo_db, data_id=data["output"])
+                    data["output"] = json.loads(output_data) if type(output_data) == str else output_data
             return data
 
     @staticmethod
@@ -839,7 +881,7 @@ class WorkflowManager:
             data = {"error": message}
         MongoWorkflow.dump_data(task_id=task_id, url=url, request_input=request_input, data=data, name=name,
                                 status=status, message=message)
-        logging.info(f"Completed dependency task: {task_id}, status: {status}")
+        logging.warning(f"Completed dependency task: {task_id}, status: {status}")
 
     @staticmethod
     @dask.delayed

@@ -555,7 +555,7 @@ class HMSWorkflow(Resource):
 
         def get(self):
             args = self.parser.parse_args()
-            wk_entry = MongoWorkflow.get_entry(task_id=args.task_id)
+            wk_entry = MongoWorkflow.get_data(task_id=args.task_id)
             if wk_entry:
                 file_out = io.BytesIO()
                 file_name = None
@@ -566,28 +566,28 @@ class HMSWorkflow(Resource):
                         wk_file_data = MongoWorkflow.get_status(task_id=args.task_id)
                         wk_zip.writestr(wk_file_name, data=json.dumps(wk_file_data))
                         for comid, catchment_id in wk_entry["catchments"].items():
-                            cat_entry = MongoWorkflow.get_entry(task_id=catchment_id)
-                            wk_zip.writestr(f"{comid}_input.json", data=cat_entry["input"])
+                            cat_entry = MongoWorkflow.get_data(task_id=catchment_id)
+                            wk_zip.writestr(f"{comid}_input.json", data=json.dumps(cat_entry["input"]))
                             if cat_entry["output"]:
-                                wk_zip.writestr(f"{comid}_output.json", data=cat_entry["output"])
+                                wk_zip.writestr(f"{comid}_output.json", data=json.dumps(cat_entry["output"]))
                             if type(cat_entry["dependencies"]) == dict:
                                 for dep, dep_id in cat_entry["dependencies"].items():
                                     dep_name = f"{comid}-{dep}"
-                                    dep_entry = MongoWorkflow.get_entry(task_id=dep_id)
+                                    dep_entry = MongoWorkflow.get_data(task_id=dep_id)
                                     wk_zip.writestr(f"{dep_name}_input.json", data=json.dumps(dep_entry["input"]))
                                     if dep_entry["output"]:
                                         wk_zip.writestr(f"{dep_name}_output.json", data=json.dumps(dep_entry["output"]))
-                        wk_data = MongoWorkflow.get_entry(task_id=args.task_id)
+                        wk_data = MongoWorkflow.get_data(task_id=args.task_id)
                         if type(wk_data["dependencies"]) == dict:
                             for dep_name, dep_id in wk_data["dependencies"].items():
-                                dep_entry = MongoWorkflow.get_entry(task_id=dep_id)
+                                dep_entry = MongoWorkflow.get_data(task_id=dep_id)
                                 dep_name = f"workflow-{dep_entry['name']}"
                                 wk_zip.writestr(f"{dep_name}_input.json", data=json.dumps(dep_entry["input"]))
                                 if dep_entry["output"]:
                                     wk_zip.writestr(f"{dep_name}_output.json", data=json.dumps(dep_entry["output"]))
                 elif wk_entry["type"] == "catchment":
                     cat_entry = wk_entry
-                    sim_entry = MongoWorkflow.get_entry(task_id=cat_entry["sim_id"])
+                    sim_entry = MongoWorkflow.get_data(task_id=cat_entry["sim_id"])
                     comid = None
                     for c, catchment_id in sim_entry["catchments"].items():
                         if catchment_id == args.task_id:
@@ -595,12 +595,12 @@ class HMSWorkflow(Resource):
                             break
                     file_name = f"{comid}_{args.task_id}.zip"
                     with zipfile.ZipFile(file_out, "w", compression=zipfile.ZIP_DEFLATED) as wk_zip:
-                        wk_zip.writestr(f"{comid}_input.json", data=cat_entry["input"])
+                        wk_zip.writestr(f"{comid}_input.json", data=json.dumps(cat_entry["input"]))
                         if cat_entry["output"]:
-                            wk_zip.writestr(f"{comid}_output.json", data=cat_entry["output"])
+                            wk_zip.writestr(f"{comid}_output.json", data=json.dumps(cat_entry["output"]))
                         for dep, dep_id in cat_entry["dependencies"].items():
                             dep_name = f"{comid}-{dep}"
-                            dep_entry = MongoWorkflow.get_entry(task_id=dep_id)
+                            dep_entry = MongoWorkflow.get_data(task_id=dep_id)
                             wk_zip.writestr(f"{dep_name}_input.json", data=json.dumps(dep_entry["input"]))
                             if dep_entry["output"]:
                                 wk_zip.writestr(f"{dep_name}_output.json", data=json.dumps(dep_entry["output"]))
