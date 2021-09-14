@@ -63,29 +63,38 @@ class NWM:
         for k, v in self.catchment["features"][0]["properties"].items():
             self.output.add_metadata(k, v)
 
-    def request_timeseries(self):
+    def request_timeseries(self, scheduler=None, optimize: bool = False):
         warnings.filterwarnings("ignore", category=ResourceWarning)
-        scheduler = os.getenv('DASK_SCHEDULER', "127.0.0.1:8786")
+        if not scheduler:
+            scheduler = os.getenv('DASK_SCHEDULER', "127.0.0.1:8786")
         # scheduler = LocalCluster()
         client = Client(scheduler)
         logging.info(f"Request zarr data from: {nwm_url}")
-        ds = xr.open_zarr(fsspec.get_mapper(nwm_url, anon=True), consolidated=True)
-        comid_check = []
-        missing_comids = []
-        for c in self.comids:
-            try:
-                test = ds["streamflow"].sel(feature_id=c).sel(time=slice("2010-01-01", "2010-01-01"))
-                comid_check.append(c)
-            except KeyError:
-                missing_comids.append(c)
-        if len(missing_comids) > 0:
-            self.output.add_metadata("missing_comids", ", ".join(missing_comids))
-
-        with dask.config.set(**{'array.slicing.split_large_chunks': True}):
-            ds_streamflow = ds[variables].sel(feature_id=self.comids).sel(time=slice(
-                f"{self.start_date.year}-{self.start_date.month}-{self.start_date.day}",
-                f"{self.end_date.year}-{self.end_date.month}-{self.end_date.day}"
-            )).load()
+        if optimize:
+            # drop_variables = list(set(all_variables) - set(variables))
+            ds = xr.open_zarr(fsspec.get_mapper(nwm_url, anon=True), consolidated=True, chunks='auto')
+            with dask.config.set(**{'array.slicing.split_large_chunks': True}):
+                ds_streamflow = ds[variables].sel(feature_id=self.comids).sel(time=slice(
+                    f"{self.start_date.year}-{self.start_date.month}-{self.start_date.day}",
+                    f"{self.end_date.year}-{self.end_date.month}-{self.end_date.day}"
+                )).load(optimize_graph=True, traverse=False)
+        else:
+            ds = xr.open_zarr(fsspec.get_mapper(nwm_url, anon=True), consolidated=True)
+            comid_check = []
+            missing_comids = []
+            for c in self.comids:
+                try:
+                    test = ds["streamflow"].sel(feature_id=c).sel(time=slice("2010-01-01", "2010-01-01"))
+                    comid_check.append(c)
+                except KeyError:
+                    missing_comids.append(c)
+            if len(missing_comids) > 0:
+                self.output.add_metadata("missing_comids", ", ".join(missing_comids))
+            with dask.config.set(**{'array.slicing.split_large_chunks': True}):
+                ds_streamflow = ds[variables].sel(feature_id=self.comids).sel(time=slice(
+                    f"{self.start_date.year}-{self.start_date.month}-{self.start_date.day}",
+                    f"{self.end_date.year}-{self.end_date.month}-{self.end_date.day}"
+                )).load()
 
         self.data = ds_streamflow
         self.output.add_metadata("retrieval_timestamp", datetime.datetime.now().isoformat())
