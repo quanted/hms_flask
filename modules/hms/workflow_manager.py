@@ -748,12 +748,15 @@ class WorkflowManager:
                 upstream_catchments = {}
                 upstream_ids = {}
                 for c in self.sources[catchment]:
-                    if "_" not in str(c):
-                        upstream_catchments[str(c)] = catchment_tasks[str(c)]
-                        upstream_ids[str(c)] = self.catchment_ids[str(c)]
-                    else:
+                    if "_" in str(c):
                         pcomid = str(c).split("_")
                         upstream_ids[pcomid[0]] = pcomid[1]
+                    elif c not in catchment_ids.keys():
+                        # out of network source for boundary segment
+                        continue
+                    else:
+                        upstream_catchments[str(c)] = catchment_tasks[str(c)]
+                        upstream_ids[str(c)] = self.catchment_ids[str(c)]
                 cat_d_ids_only = {}
                 if type(catchment_dependencies) == dict:
                     list_catchment = []
