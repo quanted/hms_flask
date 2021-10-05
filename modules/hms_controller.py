@@ -12,6 +12,7 @@ import logging
 import json
 import os
 import zipfile
+import hashlib
 
 from celery_cgi import celery
 
@@ -198,6 +199,17 @@ class NWMDownload(Resource):
 
     def get(self):
         args = self.parser.parse_args()
+
+        hash = hashlib.md5(json.dumps(
+            {'dataset': args.dataset, 'comids': args.comid, 'startDate': args.startDate, 'endDate': args.endDate},
+            sort_keys=True).encode()).hexdigest()
+        mongo_db = connect_to_mongoDB("hms")
+        posts = mongo_db["data"]
+        exists = posts.find_one({"hash": hash})
+        mongo_db.close()
+        if exists:
+            if len(exists["data"]["data"]) > 0:
+                return exists["_id"]
         task_id = self.start_async.apply_async(
             args=(args.dataset, args.comid, args.startDate, args.endDate, args.timestep), queue="qed")
         return Response(json.dumps({'job_id': task_id.id}))
@@ -225,13 +237,16 @@ class NWMDownload(Resource):
             logging.warning(f"Error attempting to retrieve NWM data: {e}")
             return
         time1 = time.time()
+        hash = hashlib.md5(json.dumps(
+            {'dataset': dataset, 'comids': comid, 'startDate': startDate, 'endDate': endDate},
+            sort_keys=True).encode()).hexdigest()
         logging.info("NWM timeseries runtime: {} sec ".format((round(time1-time0, 4))))
         logging.info("hms_controller.NWM download completed.")
         logging.info("Adding data to mongoDB...")
         mongo_db = connect_to_mongoDB("hms")
         posts = mongo_db["data"]
         time_stamp = datetime.utcnow()
-        data = {'_id': task_id, 'date': time_stamp, 'data': nwm.output.to_dict()}
+        data = {'_id': task_id, 'date': time_stamp, 'data': nwm.output.to_dict(), 'hash': hash}
         query = {'_id': task_id}
         exists = posts.find_one(query)
         if exists:

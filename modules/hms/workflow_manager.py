@@ -839,7 +839,7 @@ class WorkflowManager:
 
     @staticmethod
     @dask.delayed
-    def execute_dependency(task_id: str, name: str, url: str, request_input: dict, debug: bool = False, comid: str = None):
+    def execute_dependency(task_id: str, name: str, url: str, request_input: dict, debug: bool = False, comid: str = None, retries: int = 5):
         """
         The function that corresponds to a dependency node task.
         :param task_id: The task_id
@@ -879,11 +879,14 @@ class WorkflowManager:
                     else:
                         message = f"Completed data retrieval task for {name} in catchment {comid}"
         except Exception as e:
-            logging.warning(f"Error: e002, message: {e}")
-            message = f"error002: {str(e)}"
+            logging.warning(f"Error: e002, message: {e}; retries: {retries} of 5")
+            message = f"error002: {str(e)}; retries: {retries} of 5"
             data = {"error": message}
         MongoWorkflow.dump_data(task_id=task_id, url=url, request_input=request_input, data=data, name=name,
                                 status=status, message=message)
+        if status == "FAILED" and retries > 0:
+            WorkflowManager.execute_dependency(task_id=task_id, name=name, url=url, request_input=request_input,
+                                               debug=debug, comid=comid, retries=retries-1)
         logging.warning(f"Completed dependency task: {task_id}, status: {status}")
 
     @staticmethod
