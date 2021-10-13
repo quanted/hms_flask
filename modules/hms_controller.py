@@ -206,7 +206,6 @@ class NWMDownload(Resource):
         mongo_db = connect_to_mongoDB("hms")
         posts = mongo_db["data"]
         exists = posts.find_one({"hash": hash})
-        mongo_db.close()
         if exists:
             if len(exists["data"]["data"]) > 0:
                 return exists["_id"]
