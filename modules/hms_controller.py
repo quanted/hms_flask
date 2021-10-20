@@ -208,7 +208,7 @@ class NWMDownload(Resource):
         exists = posts.find_one({"hash": hash})
         if exists:
             if len(exists["data"]["data"]) > 0:
-                return exists["_id"]
+                return Response(json.dumps({'job_id': exists["_id"]}))
         task_id = self.start_async.apply_async(
             args=(args.dataset, args.comid, args.startDate, args.endDate, args.timestep), queue="qed")
         return Response(json.dumps({'job_id': task_id.id}))
