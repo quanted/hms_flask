@@ -6,7 +6,7 @@ from osgeo import ogr
 from osgeo import osr
 import urllib.request
 from zipfile import *
-import shapefile
+# import shapefile
 import datetime
 import requests
 import shutil
