@@ -8,5 +8,12 @@ print("WSGI Current working directory: {}".format(curr_wd))
 
 print(sys.path)
 import flask_hms
+from werkzeug.middleware.dispatcher import DispatcherMiddleware
+from werkzeug.wrappers import Response
 
-application = flask_hms.app
+flask_app = DispatcherMiddleware(
+    Response('Page not found', status=404),
+    {'/hms': flask_hms.app}
+)
+
+application = flask_app
