@@ -34,16 +34,17 @@ NWM_TASK_COUNT = 0
 
 
 def connect_to_mongoDB(database=None):
+    mongodb_host = os.getenv("MONGODB", "mongodb://localhost:27017/0")
     if database is None:
         database = 'flask_hms'
     if IN_DOCKER == "False":
         # Dev env mongoDB
-        logging.info("Connecting to mongoDB at: mongodb://localhost:27017/0")
-        mongo = pymongo.MongoClient(host='mongodb://localhost:27017/0')
+        logging.info(f"Connecting to mongoDB at: {mongodb_host}")
+        mongo = pymongo.MongoClient(host=mongodb_host)
     else:
         # Production env mongoDB
-        logging.info("Connecting to mongoDB at: mongodb://mongodb:27017/0")
-        mongo = pymongo.MongoClient(host='mongodb://mongodb:27017/0')
+        logging.info(f"Connecting to mongoDB at: {mongodb_host}")
+        mongo = pymongo.MongoClient(host=mongodb_host)
     mongo_db = mongo[database]
     if database == 'flask_hms':
         mongo.flask_hms.Collection.create_index([("date", pymongo.DESCENDING)], expireAfterSeconds=86400)
