@@ -64,11 +64,8 @@ def save_status(task_id, status, message=None, data=None, hash=None):
     db_record = posts.find_one({"_id": task_id})
     if db_record is not None:
         db_record = dict(db_record)
-    else:
-        db_record = {}
     time_stamp = datetime.utcnow()
-
-    if len(db_record) == 0:          # existing entry, update
+    if db_record is not None:          # existing entry, update
         db_record["status"] = status
         db_record["date"] = str(time_stamp)
         if message is not None:
@@ -112,9 +109,7 @@ def task_status(task_id):
     db_record = posts.find_one({"_id": task_id})
     if db_record is not None:
         db_record = dict(db_record)
-    else:
-        db_record = {}
-    if len(db_record) == 0:
+    if db_record is None:
         return {"job_id": task_id, "status": "NA", "data": f"No task found for id: {task_id}"}
     message = db_record["message"] if "message" in db_record else ""
     if db_record["status"] == "SUCCESS":
