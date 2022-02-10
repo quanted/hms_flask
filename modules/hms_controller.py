@@ -32,6 +32,8 @@ IN_DOCKER = os.environ.get("IN_DOCKER")
 USE_DASK = os.getenv("DASK", "True") == "True"
 NWM_TASK_COUNT = 0
 
+logger = logging.getLogger(__name__)
+logger.setLevel(level=logging.DEBUG)
 
 def connect_to_mongoDB(database=None):
     mongodb_host = os.getenv("MONGODB", "mongodb://localhost:27017/0")
@@ -39,11 +41,11 @@ def connect_to_mongoDB(database=None):
         database = 'flask_hms'
     if IN_DOCKER == "False":
         # Dev env mongoDB
-        logging.info(f"Connecting to mongoDB at: {mongodb_host}")
+        logger.info(f"Connecting to mongoDB at: {mongodb_host}")
         mongo = pymongo.MongoClient(host=mongodb_host)
     else:
         # Production env mongoDB
-        logging.info(f"Connecting to mongoDB at: {mongodb_host}")
+        logger.info(f"Connecting to mongoDB at: {mongodb_host}")
         mongo = pymongo.MongoClient(host=mongodb_host)
     mongo_db = mongo[database]
     if database == 'flask_hms':
@@ -75,7 +77,7 @@ def save_status(task_id, status, message=None, data=None, hash=None):
         if hash is not None:
             db_record["hash"] = hash
         posts.replace_one({"_id": task_id}, db_record)
-        logging.info(f"MongoDB - Updated record, ID: {task_id}, status: {status}")
+        logger.info(f"MongoDB - Updated record, ID: {task_id}, status: {status}")
     else:                       # new entry
         new_record = {"_id": task_id, "status": status, "date": str(time_stamp)}
         if message is not None:
@@ -85,7 +87,7 @@ def save_status(task_id, status, message=None, data=None, hash=None):
         if hash is not None:
             new_record["hash"] = hash
         posts.insert_one(new_record)
-        logging.info(f"MongoDB - New record created, ID: {task_id}, status: {status}")
+        logger.info(f"MongoDB - New record created, ID: {task_id}, status: {status}")
 
 
 def get_dask_client():
@@ -93,10 +95,10 @@ def get_dask_client():
         return None
     if IN_DOCKER == "True":
         scheduler_name = os.getenv('DASK_SCHEDULER', "hms-dask-scheduler:8786")
-        logging.info(f"Dask Scheduler: {scheduler_name}")
+        logger.info(f"Dask Scheduler: {scheduler_name}")
         dask_client = Client(scheduler_name)
     else:
-        logging.info("Dask Scheduler: Local Cluster")
+        logger.info("Dask Scheduler: Local Cluster")
         scheduler = LocalCluster(processes=False)
         dask_client = Client(scheduler)
     return dask_client
@@ -168,11 +170,11 @@ class HMSFlaskTest(Resource):
     @staticmethod
     def run_test(task_id):
         save_status(task_id=task_id, status="STARTED")
-        logging.info(f"Starting test task on Dask, ID: {task_id}")
+        logger.info(f"Starting test task on Dask, ID: {task_id}")
         time_stamp = datetime.utcnow()
         data = {"request_time": str(time_stamp)}
         save_status(task_id=task_id, status="SUCCESS", data=data)
-        logging.info("Completed test task on Dask, ID: {task_id}")
+        logger.info("Completed test task on Dask, ID: {task_id}")
 
 
 class HMSRevokeTask(Resource):
@@ -195,7 +197,7 @@ class HMSRevokeTask(Resource):
                 save_status(task_id=task_id, status="CANCELLED", message=message)
             except Exception as e:
                 message = f"Error attempting to cancel task: {task_id}, message: {e}"
-            logging.info(message)
+            logger.info(message)
         return Response(json.dumps({'job_id': task_id, 'data': message}))
 
 
@@ -244,7 +246,7 @@ class NCDCStationSearch(Resource):
     @staticmethod
     def station_search(task_id, geojson, start_date, end_date, crs, latitude=None, longitude=None, comid=None):
         save_status(task_id=task_id, status="STARTED")
-        logging.info(f"Starting NCDC station search task, ID: {task_id}")
+        logger.info(f"Starting NCDC station search task, ID: {task_id}")
         if geojson:
             stations = NCDCStations.findStationsInGeoJson(geojson, start_date, end_date, crs)
         elif comid:
@@ -252,7 +254,7 @@ class NCDCStationSearch(Resource):
         else:
             stations = NCDCStations.findStationFromPoint(latitude, longitude, start_date, end_date)
         save_status(task_id=task_id, status="SUCCESS", data=stations)
-        logging.info(f"Completed NCDC station search task, ID: {task_id}")
+        logger.info(f"Completed NCDC station search task, ID: {task_id}")
 
 
 class NWMDownload(Resource):
@@ -290,7 +292,7 @@ class NWMDownload(Resource):
     def get_data(task_id, dataset, comid, startDate, endDate):
         comids = comid.split(",")
         save_status(task_id=task_id, status="STARTED")
-        logging.info(f"Starting NWM download task, ID: {task_id}")
+        logger.info(f"Starting NWM download task, ID: {task_id}")
         time0 = time.time()
         try:
             nwm = NWM(start_date=startDate, end_date=endDate, comids=comids)
@@ -305,7 +307,7 @@ class NWMDownload(Resource):
             {'dataset': dataset, 'comids': comid, 'startDate': startDate, 'endDate': endDate},
             sort_keys=True).encode()).hexdigest()
         save_status(task_id=task_id, status="SUCCESS", data=nwm.output.to_dict(), hash=hash)
-        logging.info(f"Completed NWM download task, ID: {task_id}, runtime: {round(time1-time0, 4)}")
+        logger.info(f"Completed NWM download task, ID: {task_id}, runtime: {round(time1-time0, 4)}")
 
 
 class NLDASGridCells(Resource):
@@ -333,7 +335,7 @@ class NLDASGridCells(Resource):
     @staticmethod
     def get_data(task_id, huc_8_id, huc_12_id, com_id_list, grid_source):
         save_status(task_id=task_id, status="STARTED")
-        logging.info(f"Started NLDAS grid cells task, ID: {task_id}")
+        logger.info(f"Started NLDAS grid cells task, ID: {task_id}")
         if huc_8_id:
             catchment_cells = CatchmentGrid.getIntersectCellsInHuc8(huc_8_id, grid_source)
         elif huc_12_id:
@@ -343,7 +345,7 @@ class NLDASGridCells(Resource):
         else:
             catchment_cells = {}
         save_status(task_id=task_id, status="SUCCESS", data=catchment_cells)
-        logging.info(f"Completed NLDAS grid cells task, ID: {task_id}")
+        logger.info(f"Completed NLDAS grid cells task, ID: {task_id}")
 
 
 class ProxyDNC2(Resource):
@@ -366,7 +368,7 @@ class ProxyDNC2(Resource):
     @staticmethod
     def proxy_request(task_id, request_url, request_body):
         save_status(task_id=task_id, status="STARTED")
-        logging.info(f"Started HMS REST proxy task, ID: {task_id}")
+        logger.info(f"Started HMS REST proxy task, ID: {task_id}")
         if os.environ['IN_DOCKER'] == "False":
             proxy_url = "http://localhost:60050/api/" + request_url
         else:
@@ -374,7 +376,7 @@ class ProxyDNC2(Resource):
         request_data = requests.post(proxy_url, json=request_body)
         json_data = json.loads(request_data.text)
         save_status(task_id=task_id, status="SUCCESS", data=json_data)
-        logging.info(f"Completed HMS REST proxy task, ID: {task_id}")
+        logger.info(f"Completed HMS REST proxy task, ID: {task_id}")
 
 
 class NWMDataShortTerm(Resource):
@@ -408,7 +410,7 @@ class NWMDataShortTerm(Resource):
 
     @staticmethod
     def get_data(task_id, comid, dt):
-        logging.info(f"Started NWM short term forecast data task. ID: {task_id}")
+        logger.info(f"Started NWM short term forecast data task. ID: {task_id}")
         save_status(task_id=task_id, status="STARTED")
         nwm = NWMForecastData(dt=dt)
         nwm.download_data()
@@ -417,7 +419,7 @@ class NWMDataShortTerm(Resource):
             json_data = nwm.generate_timeseries(c)
             comid_data[str(c)] = json_data
         save_status(task_id=task_id, status="SUCCESS", data=comid_data)
-        logging.info(f"Completed NWM short term forecast data task. ID: {task_id}")
+        logger.info(f"Completed NWM short term forecast data task. ID: {task_id}")
 
 
 class HMSWorkflow(Resource):
@@ -517,13 +519,13 @@ class HMSWorkflow(Resource):
 
         @staticmethod
         def cancel_workflow(task_id):
-            logging.info(f"HMS workflow cancel request for: {task_id}")
+            logger.info(f"HMS workflow cancel request for: {task_id}")
             MongoWorkflow.kill_simulation(sim_id=task_id)
-            logging.info(f"HMS workflow cancellation completed for: {task_id}")
+            logger.info(f"HMS workflow cancellation completed for: {task_id}")
 
         @staticmethod
         def execute_sim_workflow(task_id):
-            logging.info("Starting HMS Workflow simulation. ID: {}".format(task_id))
+            logger.info("Starting HMS Workflow simulation. ID: {}".format(task_id))
             valid, workflow = WorkflowManager.load(sim_taskid=task_id)
             if valid == 0:
                 MongoWorkflow.update_simulation_entry(simulation_id=task_id, status="FAILED", message=workflow)
@@ -533,7 +535,7 @@ class HMSWorkflow(Resource):
                 workflow.define_presim_dependencies(simulation_dependencies)
                 workflow.construct_from_db(catchment_ids=simulation_entry["catchments"])
                 workflow.compute()
-                logging.info(f"HMS Workflow Manager simulation completed. ID: {task_id}")
+                logger.info(f"HMS Workflow Manager simulation completed. ID: {task_id}")
 
     class Status(Resource):
         parser = parser_base.copy()
