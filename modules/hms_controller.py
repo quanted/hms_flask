@@ -61,9 +61,14 @@ def save_status(task_id, status, message=None, data=None, hash=None):
     mongo_db = connect_to_mongoDB("hms")
     db = mongo_db["data"]
     posts = db.posts
-    db_record = dict(posts.find_one({"_id": task_id}))
+    db_record = posts.find_one({"_id": task_id})
+    if db_record is not None:
+        db_record = dict(db_record)
+    else:
+        db_record = {}
     time_stamp = datetime.utcnow()
-    if len(db_record):          # existing entry, update
+
+    if len(db_record) == 0:          # existing entry, update
         db_record["status"] = status
         db_record["date"] = str(time_stamp)
         if message is not None:
@@ -104,7 +109,11 @@ def task_status(task_id):
     mongo_db = connect_to_mongoDB("hms")
     db = mongo_db["data"]
     posts = db.posts
-    db_record = dict(posts.find_one({"_id": task_id}))
+    db_record = posts.find_one({"_id": task_id})
+    if db_record is not None:
+        db_record = dict(db_record)
+    else:
+        db_record = {}
     if len(db_record) == 0:
         return {"job_id": task_id, "status": "NA", "data": f"No task found for id: {task_id}"}
     message = db_record["message"] if "message" in db_record else ""
@@ -119,7 +128,11 @@ def check_hash(hash):
     mongo_db = connect_to_mongoDB("hms")
     db = mongo_db["data"]
     posts = db.posts
-    db_record = dict(posts.find_one({"hash": hash}))
+    db_record = posts.find_one({"hash": hash})
+    if db_record is not None:
+        db_record = dict(db_record)
+    else:
+        db_record = {}
     if len(db_record) == 0:
         return None
     else:
