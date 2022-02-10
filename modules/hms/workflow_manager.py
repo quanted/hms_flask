@@ -34,13 +34,14 @@ class MongoWorkflow:
         :return: mongo Client
         """
         in_docker = (os.getenv("IN_DOCKER", "False") == "True")
+        mongodb_host = os.getenv("MONGODB", "mongodb://localhost:27017/0")
         database = 'hms_workflows'
         if not in_docker:
             # Dev env mongoDB
-            mongo = pymongo.MongoClient(host='mongodb://localhost:27017/0')
+            mongo = pymongo.MongoClient(host=mongodb_host)
         else:
             # Production env mongoDB
-            mongo = pymongo.MongoClient(host='mongodb://mongodb:27017/0')
+            mongo = pymongo.MongoClient(host=mongodb_host)
         mongo[database].Collection.create_index([("timestamp", pymongo.DESCENDING)], expireAfterSeconds=604800)
 
         return mongo

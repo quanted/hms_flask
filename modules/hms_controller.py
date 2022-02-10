@@ -32,8 +32,10 @@ IN_DOCKER = os.environ.get("IN_DOCKER")
 USE_DASK = os.getenv("DASK", "True") == "True"
 NWM_TASK_COUNT = 0
 
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-logger.setLevel(level=logging.DEBUG)
+logger.setLevel(level=logging.INFO)
+
 
 def connect_to_mongoDB(database=None):
     mongodb_host = os.getenv("MONGODB", "mongodb://localhost:27017/0")
