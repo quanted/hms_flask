@@ -12,3 +12,4 @@ requests=2.27.1
 s3fs=0.4.2
 shapely=1.8.0
 xarray=0.21.1
+zarr=2.11.0
