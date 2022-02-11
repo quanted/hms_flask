@@ -385,25 +385,24 @@ class MongoWorkflow:
         posts = mongo_db["data"]
         query = {'_id': task_id}
         data = posts.find_one(query)
-        mongo.close()
+
         if data is None:
-            return {"error": f"No data found for a task with id: {task_id}"}
+            data = {"error": f"No data found for a task with id: {task_id}"}
         if data["type"] == "workflow":
             input_data = json.loads(MongoWorkflow.get_bigdata(mongo_db=mongo_db, data_id=data["input"]))
             data["input"] = input_data
-            return data
         elif data["type"] == "dependency":
             if data["output"]:
                 output_data = json.loads(MongoWorkflow.get_bigdata(mongo_db=mongo_db, data_id=data["output"]))
                 data["output"] = output_data
-            return data
         else:
             input_data = json.loads(MongoWorkflow.get_bigdata(mongo_db=mongo_db, data_id=data["input"]))
             data["input"] = input_data
             if data["output"]:
                 output_data = json.loads(MongoWorkflow.get_bigdata(mongo_db=mongo_db, data_id=data["output"]))
                 data["output"] = output_data
-            return data
+        mongo.close()
+        return data
 
     @staticmethod
     def dump_data(task_id: str, url: str, name: str, request_input: dict, data=None, data_type: str = "dependency",
@@ -461,7 +460,6 @@ class MongoWorkflow:
         posts = mongo_db["data"]
         hash = hashlib.md5((url.lower() + json.dumps(request_input, sort_keys=True)).encode()).hexdigest()
         exists = posts.find_one({"hash": hash})
-        mongo.close()
         if exists:
             same_task = True
             logging_check = []
@@ -493,6 +491,7 @@ class MongoWorkflow:
                 logging.info(f"Unable to reuse task due to {', '.join(logging_check)}")
         else:
             logging.info(f"No existing data found in the database for hash: {hash}")
+        mongo.close()
         return None
 
     @staticmethod
@@ -507,10 +506,8 @@ class MongoWorkflow:
         posts = mongo_db["data"]
         query = {'_id': task_id}
         data = posts.find_one(query)
-        mongo.close()
-        if data is None:
-            return None
-        else:
+
+        if data is not None:
             if "input" in data.keys():
                 if data["input"] and type(data["input"]) == str:
                     input_data = MongoWorkflow.get_bigdata(mongo_db=mongo_db, data_id=data["input"])
@@ -519,7 +516,8 @@ class MongoWorkflow:
                 if data["output"]:
                     output_data = MongoWorkflow.get_bigdata(mongo_db=mongo_db, data_id=data["output"])
                     data["output"] = json.loads(output_data) if type(output_data) == str else output_data
-            return data
+        mongo.close()
+        return data
 
     @staticmethod
     def simulation_run_ready(task_id):
@@ -533,7 +531,7 @@ class MongoWorkflow:
         posts = mongo_db["data"]
         query = {'_id': task_id}
         data = posts.find_one(query)
-        mongo.close()
+        message = None
         if data["type"] == "workflow":
             valid = True
             ready_comids = list(data["catchments"].keys())
@@ -543,11 +541,15 @@ class MongoWorkflow:
                     valid = False
                     notready_comids.append(comid)
             if valid:
-                return 1, None
+                state = 1
             else:
-                return 0, f"Simulation contains catchments with no provided inputs. COMIDS: {', '.join(notready_comids)}"
+                state = 0
+                message = f"Simulation contains catchments with no provided inputs. COMIDS: {', '.join(notready_comids)}"
         else:
-            return 0, f"task_id is not of type workflow, task_id type: {data['type']}"
+            state = 0
+            message = f"task_id is not of type workflow, task_id type: {data['type']}"
+        mongo.close()
+        return state, message
 
     @staticmethod
     def set_sim_status(task_id, status: str = "PENDING", replace_completed: bool = True):
@@ -564,6 +566,7 @@ class MongoWorkflow:
         query = {'_id': task_id}
         data = posts.find_one(query)
         if data is None:
+            mongo.close()
             return
         if data["type"] == "catchment":
             if replace_completed:
@@ -622,6 +625,7 @@ class MongoWorkflow:
                     valid = False
                     message = f"Dependency: {id} failed"
                     break
+        mongo.close()
         return valid, message
 
 
