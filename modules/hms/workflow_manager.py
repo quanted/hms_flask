@@ -857,8 +857,7 @@ class WorkflowManager:
         """
         MongoWorkflow.dump_data(task_id=task_id, url=url, request_input=request_input, name=name, status="IN-PROGRESS",
                                 message=f"Started data retrieval task for {name} in catchment {comid}")
-        task_target = os.getenv('HMS_WORKFLOW_BACKEND',
-                                os.getenv('HMS_BACKEND_SERVER_INTERNAL', "http://localhost:60550/"))
+        task_target = os.getenv('HMS_BACKEND', "http://localhost:60550/")
         request_url = str(task_target) + url
         logging.warning(f"Submitting dependency task: {task_id} to url: {request_url} for comid: {comid}")
         status = "FAILED"
@@ -982,7 +981,7 @@ class WorkflowManager:
             time.sleep(10)
             return "{'test':'test'}"
         workflow_url = "api/aquatox/workflow"
-        request_url = str(os.getenv('HMS_BACKEND_SERVER_INTERNAL', "http://localhost:60550/")) + workflow_url
+        request_url = str(os.getenv('HMS_BACKEND', "http://localhost:60550/")) + workflow_url
         data = requests.get(request_url, params={'task_id': catchment_taskid}, timeout=timeout)
         return data.text
 
