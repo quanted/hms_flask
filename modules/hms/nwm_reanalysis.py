@@ -103,7 +103,7 @@ class NWM:
         # scheduler.close()
         # client.close()
 
-    def set_output(self):
+    def set_output(self, return_dataframe: bool=False):
         if self.data is None:
             return
         for k, v in self.data.attrs.items():
@@ -120,12 +120,14 @@ class NWM:
                 self.output.add_metadata(f"{v}_missing_value_count", str(nan_count))
                 self.output.add_metadata(f"{v}_missing_value_flag", str(missing_value))
                 timeseries[v] = timeseries[v].replace(np.nan, missing_value)
+        if return_dataframe:
+            return timeseries
         i = 1
         first = True
         for idx, catchment in timeseries.groupby("feature_id"):
             i_meta = True
             for date, row in catchment.iterrows():
-                d = date[1].strftime('%Y-%m-%d %H')
+                d = date[0].strftime('%Y-%m-%d %H')
                 if first:
                     self.output.data[d] = [r for r in row[variables]]
                 else:
