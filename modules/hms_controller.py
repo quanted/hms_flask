@@ -38,7 +38,7 @@ logger.setLevel(level=logging.INFO)
 
 
 def connect_to_mongoDB(database=None):
-    mongodb_host = os.getenv("MONGODB", "mongodb://localhost:27017/0")
+    mongodb_host = os.getenv("MONGODB_HOST", "mongodb://localhost:27017/0")
     if database is None:
         database = 'flask_hms'
     if IN_DOCKER == "False":

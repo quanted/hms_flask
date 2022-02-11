@@ -34,7 +34,7 @@ class MongoWorkflow:
         :return: mongo Client
         """
         in_docker = (os.getenv("IN_DOCKER", "False") == "True")
-        mongodb_host = os.getenv("MONGODB", "mongodb://localhost:27017/0")
+        mongodb_host = os.getenv("MONGODB_HOST", "mongodb://localhost:27017/0")
         database = 'hms_workflows'
         if not in_docker:
             # Dev env mongoDB
