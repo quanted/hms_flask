@@ -374,7 +374,7 @@ class ProxyDNC2(Resource):
         if os.environ['IN_DOCKER'] == "False":
             proxy_url = "http://localhost:60050/api/" + request_url
         else:
-            proxy_url = os.getenv('HMS_BACKEND', "hms_dotnetcore:80") + "/api/" + request_url
+            proxy_url = os.getenv('HMS_BACKEND', "hms-dotnetcore:80/") + "api/" + request_url
         request_data = requests.post(proxy_url, json=request_body)
         json_data = json.loads(request_data.text)
         save_status(task_id=task_id, status="SUCCESS", data=json_data)
