@@ -1,3 +1,4 @@
+
 name: Create and publish a Docker image
 
 on:
@@ -39,3 +40,15 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+  trigger-parent-workflow:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          repository: quanted/hms_kube
+          token: ${{ secrets.NTA_ACTION_TOKEN }}
+      - name: Trigger hms-dask build
+        run: |
+          gh workflow run docker-build.yml --repo quanted/hms_kube
