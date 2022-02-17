@@ -1,13 +1,12 @@
 
 name: Create and publish a Docker image
 
-on:
-  push:
-    branches: ['dev-kube']
+on: [push, pull_request]
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
+  GITHUB_TOKEN: ${{ secrets.NTA_ACTION_TOKEN }}
 
 jobs:
   build-and-push-image:
