@@ -136,12 +136,15 @@ def check_hash(hash):
         return None
     else:
         if "data" in db_record.keys():
-            if "metadata" in db_record["data"].keys():
-                if "error" in db_record["data"]["metadata"].keys():
-                    return None
-            if "data" in db_record["data"].keys():
-                if len(db_record["data"]["data"]) == 0:
-                    return None
+            if type(db_record["data"]) == dict:
+                if "metadata" in db_record["data"].keys():
+                    if "error" in db_record["data"]["metadata"].keys():
+                        return None
+                if "data" in db_record["data"]:
+                    if len(db_record["data"]["data"]) == 0:
+                        return None
+            else:
+                return None
         return db_record["_id"]
 
 
