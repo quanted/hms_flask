@@ -135,6 +135,13 @@ def check_hash(hash):
     if len(db_record) == 0:
         return None
     else:
+        if "data" in db_record.keys():
+            if "metadata" in db_record["data"].keys():
+                if "error" in db_record["data"]["metadata"].keys():
+                    return None
+            if "data" in db_record["data"].keys():
+                if len(db_record["data"]["data"]) == 0:
+                    return None
         return db_record["_id"]
 
 
@@ -279,8 +286,7 @@ class NWMDownload(Resource):
             sort_keys=True).encode()).hexdigest()
         exists = check_hash(hash=hash)
         if exists:
-            if len(exists["data"]["data"]) > 0:
-                return Response(json.dumps({'job_id': exists["_id"]}))
+            return Response(json.dumps({'job_id': exists}))
 
         task_id = str(uuid.uuid4())
         save_status(task_id=task_id, status="PENDING", message="nwm data download")
