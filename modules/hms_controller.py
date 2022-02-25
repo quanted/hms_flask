@@ -297,8 +297,9 @@ class NWMDownload(Resource):
         logger.info(f"Starting NWM download task, ID: {task_id}")
         time0 = time.time()
         try:
+            nwm2 = os.getenv("NWM_2_1", "False") == "True"
             nwm = NWM(start_date=startDate, end_date=endDate, comids=comids)
-            nwm.request_timeseries()
+            nwm.request_timeseries(nwm_2=nwm2)
             nwm.set_output()
         except Exception as e:
             logging.warning(f"Error attempting to retrieve NWM data, ID: {task_id}, error: {e}")

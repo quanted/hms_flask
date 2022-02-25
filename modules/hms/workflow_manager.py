@@ -669,6 +669,7 @@ class WorkflowManager:
         self.task_id = task_id
         self.sim_input = sim_input
         self.catchments = {}
+        self.sf_tasks = {}
         self.sources = sources
         self.order = order
         self.pourpoint = None
@@ -789,6 +790,8 @@ class WorkflowManager:
                         dep_input = dep["input"]
                         dep_url = dep["url"]
                     presim_check = MongoWorkflow.check_hash(dep_url, dep_input)
+                    cat_task = None
+                    reuse = False
                     if debug_logs:
                         logging.info(f"Presim_check: {presim_check}")
                     if presim_check:
@@ -796,20 +799,34 @@ class WorkflowManager:
                             logging.info(
                                 f"Using existing dependency task for COMID: {catchment}, Name: {dep['name']}, new_task: {new_task}")
                             logging.info(f"Dependency taskID: {presim_check}")
-                        cat_task = None
                         task_id = presim_check
                     else:
+                        if dep["name"] == "streamflow" and dep["input"]["source"] == "nwm":
+                            if dep["input"]["geometry"]["comID"] in self.sf_tasks.keys():
+                                cat_task, task_id = self.sf_tasks[dep["input"]["geometry"]["comID"]]
+                                reuse = True
+                        if not reuse:
+                            cat_task = dask.delayed(WorkflowManager.execute_dependency)(task_id, dep["name"], dep_url,
+                                                                                        dep_input, self.debug,
+                                                                                        catchment,
+                                                                                        dask_key_name=f"{task_id}")
                         if debug_logs:
-                            logging.info(f"Creating new dependency task for COMID: {catchment}, Name: {dep['name']}")
+                            if reuse:
+                                logging.info(f"Reusing dependency task for COMID: {catchment}, Name: {dep['name']} "
+                                             f"for streamflow from comid: {dep['input']['geometry']['comID']}")
+                            else:
+                                logging.info(f"Creating new dependency task for COMID: {catchment}, Name: {dep['name']}")
                             logging.info(f"Dependency taskID: {task_id}")
-                        cat_task = dask.delayed(WorkflowManager.execute_dependency)(task_id, dep["name"], dep_url,
-                                                                                    dep_input, self.debug, catchment,
-                                                                                    dask_key_name=f"{task_id}")
+
                         MongoWorkflow.dump_data(task_id=task_id, url=dep_url, request_input=dep_input, name=dep["name"],
                                                 status="PENDING", message=f"Created catchment data task for {catchment}")
                     cat_dependencies[dep["name"]] = cat_task
                     cat_d_ids[dep["name"]] = task_id
                     cat_d_ids_only[dep["name"]] = task_id
+                    if reuse:
+                        j_comid = dep["input"]["geometry"]["comID"]
+                        if j_comid not in self.sf_tasks.keys():
+                            self.sf_tasks[j_comid] = [cat_task, task_id]
                 MongoWorkflow.update_catchment_entry(catchment_id=catchment_id, status="PENDING",
                                                      upstream=upstream_ids, dependencies=cat_d_ids_only,
                                                      message=f"Created catchment simulation task for {catchment}")

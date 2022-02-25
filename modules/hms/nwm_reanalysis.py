@@ -25,6 +25,7 @@ boto3.set_stream_logger('s3fs', logging.INFO)
 
 epa_waters_url = "https://watersgeo.epa.gov/arcgis/rest/services/NHDPlus_NP21/Catchments_NP21_Simplified/MapServer/0/query?"
 nwm_url = "s3://noaa-nwm-retro-v2-zarr-pds"
+nwm_2_url = "s3://noaa-nwm-retrospective-2-1-pds"
 all_variables = ["elevation", "order", "qBtmVertRunoff", "qBucket", "qSfcLatRunoff", "q_lateral", "streamflow", "velocity"]
 variables = ["streamflow", "velocity"]
 missing_value = -9999
@@ -63,16 +64,19 @@ class NWM:
         for k, v in self.catchment["features"][0]["properties"].items():
             self.output.add_metadata(k, v)
 
-    def request_timeseries(self, scheduler=None, optimize: bool = False):
+    def request_timeseries(self, scheduler=None, optimize: bool = False, nwm_2: bool = False):
         warnings.filterwarnings("ignore", category=ResourceWarning)
         if not scheduler:
             scheduler = os.getenv('DASK_SCHEDULER', "127.0.0.1:8786")
         # scheduler = LocalCluster()
         client = Client(scheduler)
         logging.info(f"Request zarr data from: {nwm_url}")
+        request_url = nwm_url
+        if nwm_2:
+            request_url = nwm_2_url
         if optimize:
             # drop_variables = list(set(all_variables) - set(variables))
-            ds = xr.open_zarr(fsspec.get_mapper(nwm_url, anon=True), consolidated=True, chunks='auto')
+            ds = xr.open_zarr(fsspec.get_mapper(request_url, anon=True), consolidated=True, chunks='auto')
             with dask.config.set(**{'array.slicing.split_large_chunks': True}):
                 ds_streamflow = ds[variables].sel(feature_id=self.comids).sel(time=slice(
                     f"{self.start_date.year}-{self.start_date.month}-{self.start_date.day}",
