@@ -73,6 +73,7 @@ class NWM:
         logging.info(f"Request zarr data from: {nwm_url}")
         request_url = nwm_url
         if nwm_2:
+            logging.info(f"Using NWM 2.1 URL: {nwm_2_url}")
             request_url = nwm_2_url
         if optimize:
             # drop_variables = list(set(all_variables) - set(variables))
