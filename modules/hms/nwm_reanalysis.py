@@ -9,6 +9,8 @@ import numpy as np
 import xarray as xr
 import dask
 import boto3
+import s3fs
+import zarr
 import logging
 from dask.distributed import Client, LocalCluster
 import datetime
@@ -25,9 +27,11 @@ boto3.set_stream_logger('s3fs', logging.INFO)
 
 epa_waters_url = "https://watersgeo.epa.gov/arcgis/rest/services/NHDPlus_NP21/Catchments_NP21_Simplified/MapServer/0/query?"
 nwm_url = "s3://noaa-nwm-retro-v2-zarr-pds"
-nwm_2_url = "s3://noaa-nwm-retrospective-2-1-pds"
+nwm_21_url = "s3://noaa-nwm-retrospective-2-1-zarr-pds/chrtout.zarr"
 all_variables = ["elevation", "order", "qBtmVertRunoff", "qBucket", "qSfcLatRunoff", "q_lateral", "streamflow", "velocity"]
 variables = ["streamflow", "velocity"]
+# variables = ["streamflow"]
+
 missing_value = -9999
 
 
@@ -64,7 +68,7 @@ class NWM:
         for k, v in self.catchment["features"][0]["properties"].items():
             self.output.add_metadata(k, v)
 
-    def request_timeseries(self, scheduler=None, optimize: bool = False, nwm_2: bool = False):
+    def request_timeseries(self, scheduler=None, optimize: bool = False, nwm_21: bool = False):
         warnings.filterwarnings("ignore", category=ResourceWarning)
         if not scheduler:
             scheduler = os.getenv('DASK_SCHEDULER', "127.0.0.1:8786")
@@ -72,17 +76,24 @@ class NWM:
         client = Client(scheduler)
         logging.info(f"Request zarr data from: {nwm_url}")
         request_url = nwm_url
-        if nwm_2:
-            logging.info(f"Using NWM 2.1 URL: {nwm_2_url}")
-            request_url = nwm_2_url
+        if nwm_21:
+            logging.info(f"Using NWM 2.1 URL: {nwm_21_url}")
+            request_url = nwm_21_url
         if optimize:
-            # drop_variables = list(set(all_variables) - set(variables))
-            ds = xr.open_zarr(fsspec.get_mapper(request_url, anon=True), consolidated=True, chunks='auto')
+            s3 = s3fs.S3FileSystem(anon=True)
+            store = s3fs.S3Map(root=nwm_21_url, s3=s3, check=False)
+
+            ds = xr.open_zarr(store=store, consolidated=True)
+            # with dask.config.set(**{'array.slicing.split_large_chunks': True}):
+            #     ds_nwm_feature = (ds[variables].sel(time=slice(start_date, end_date)).where(ds.feature_id == f'{self.comids}'.encode()))
+            #     streamflow_nwm = ds_nwm_feature.load()
+            #     ds_streamflow = streamflow_nwm.to_dataframe()
+
             with dask.config.set(**{'array.slicing.split_large_chunks': True}):
                 ds_streamflow = ds[variables].sel(feature_id=self.comids).sel(time=slice(
                     f"{self.start_date.year}-{self.start_date.month}-{self.start_date.day}",
                     f"{self.end_date.year}-{self.end_date.month}-{self.end_date.day}"
-                )).load(optimize_graph=True, traverse=False)
+                )).load()
         else:
             ds = xr.open_zarr(fsspec.get_mapper(nwm_url, anon=True), consolidated=True)
             comid_check = []
@@ -144,3 +155,27 @@ class NWM:
                         i += 1
                     i_meta = False
             first = False
+
+
+if __name__ == "__main__":
+    import time
+    # import asyncio
+
+    start_date = "2010-01-01"
+    end_date = "2010-12-31"
+    comids = [2043493]
+    # comids = [6277975, 6278087]
+    # comids = [6277975, 6278087]
+
+    t0 = time.time()
+    nwm = NWM(start_date=start_date, end_date=end_date, comids=comids)
+    scheduler = LocalCluster(n_workers=8, threads_per_worker=4, processes=False)
+    nwm.request_timeseries(scheduler=scheduler, optimize=True, nwm_21=True)
+    t1 = time.time()
+    print(f"Request time: {round(t1-t0, 4) / 60} min(s)")
+    df = nwm.set_output(return_dataframe=True)
+    t2 = time.time()
+    print(f"Set output time: {round(t2-t1, 4)} sec")
+    # print(df)
+
+# (4, 10, opt: True nwm_2: True) = 3.84757 min
