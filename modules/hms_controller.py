@@ -306,7 +306,7 @@ class NWMDownload(Resource):
         logger.info(f"Starting NWM download task, ID: {task_id}")
         time0 = time.time()
         try:
-            nwm2 = os.getenv("NWM_21", "False") == "True"
+            nwm2 = os.getenv("NWM_21", "True") == "True"
             nwm = NWM(start_date=startDate, end_date=endDate, comids=comids)
             nwm.request_timeseries(optimize=True, nwm_21=nwm2)
             nwm.set_output()

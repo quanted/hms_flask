@@ -169,7 +169,7 @@ if __name__ == "__main__":
 
     t0 = time.time()
     nwm = NWM(start_date=start_date, end_date=end_date, comids=comids)
-    scheduler = LocalCluster(n_workers=8, threads_per_worker=4, processes=False)
+    scheduler = LocalCluster(n_workers=10, threads_per_worker=2, processes=False)
     nwm.request_timeseries(scheduler=scheduler, optimize=True, nwm_21=True)
     t1 = time.time()
     print(f"Request time: {round(t1-t0, 4) / 60} min(s)")
