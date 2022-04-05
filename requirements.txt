@@ -1,6 +1,7 @@
 boto3=1.20.24
-dask=2022.1.1
-distributed=2022.1.1
+click=8.0.2
+dask=2022.4
+distributed=2022.4
 fiona=1.8.21
 flask=2.0.2
 flask-restful=0.3.9
