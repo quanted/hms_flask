@@ -9,6 +9,8 @@ import numpy as np
 import xarray as xr
 import dask
 import boto3
+import s3fs
+import zarr
 import logging
 from dask.distributed import Client, LocalCluster
 import datetime
@@ -25,14 +27,19 @@ boto3.set_stream_logger('s3fs', logging.INFO)
 
 epa_waters_url = "https://watersgeo.epa.gov/arcgis/rest/services/NHDPlus_NP21/Catchments_NP21_Simplified/MapServer/0/query?"
 nwm_url = "s3://noaa-nwm-retro-v2-zarr-pds"
+nwm_21_url = "s3://noaa-nwm-retrospective-2-1-zarr-pds/chrtout.zarr"
 all_variables = ["elevation", "order", "qBtmVertRunoff", "qBucket", "qSfcLatRunoff", "q_lateral", "streamflow", "velocity"]
 variables = ["streamflow", "velocity"]
+
+nwm_21_wb_url = "s3://noaa-nwm-retrospective-2-1-zarr-pds/lakeout.zarr"
+wb_variables = ["inflow", "outflow", "water_sfc_elev"]
+
 missing_value = -9999
 
 
 class NWM:
 
-    def __init__(self, start_date: str, end_date: str, comids: list, timestep: str = None):
+    def __init__(self, start_date: str, end_date: str, comids: list, timestep: str = None, waterbody: bool = False):
 
         self.start_date = datetime.datetime.strptime(start_date, "%Y-%m-%d")
         self.end_date = datetime.datetime.strptime(end_date, "%Y-%m-%d") + datetime.timedelta(days=1)
@@ -42,6 +49,7 @@ class NWM:
         self.geometry = None
         self.output = TimeSeriesOutput(source="nwm", dataset="streamflow")
         self.data = None
+        self.waterbody = waterbody
 
     def get_geometry(self):
         # NOT REQUIRED: direct query using COMID, has not been updated to handle more than 1 comid
@@ -70,28 +78,40 @@ class NWM:
         # scheduler = LocalCluster()
         client = Client(scheduler)
         logging.info(f"Request zarr data from: {nwm_url}")
+        request_url = nwm_21_url
+        request_variables = variables
+
+        if self.waterbody:
+            logging.info(f"Using NWM 2.1 URL: {nwm_21_url}")
+            request_url = nwm_21_wb_url
+            request_variables = wb_variables
+
         if optimize:
-            # drop_variables = list(set(all_variables) - set(variables))
-            ds = xr.open_zarr(fsspec.get_mapper(nwm_url, anon=True), consolidated=True, chunks='auto')
+            s3 = s3fs.S3FileSystem(anon=True)
+            store = s3fs.S3Map(root=nwm_21_url, s3=s3, check=False)
+
+            ds = xr.open_zarr(store=store, consolidated=True)
+
             with dask.config.set(**{'array.slicing.split_large_chunks': True}):
                 ds_streamflow = ds[variables].sel(feature_id=self.comids).sel(time=slice(
                     f"{self.start_date.year}-{self.start_date.month}-{self.start_date.day}",
                     f"{self.end_date.year}-{self.end_date.month}-{self.end_date.day}"
-                )).load(optimize_graph=True, traverse=False)
+                )).load()
         else:
-            ds = xr.open_zarr(fsspec.get_mapper(nwm_url, anon=True), consolidated=True)
+            ds = xr.open_zarr(fsspec.get_mapper(request_url, anon=True), consolidated=True)
             comid_check = []
             missing_comids = []
-            for c in self.comids:
-                try:
-                    test = ds["streamflow"].sel(feature_id=c).sel(time=slice("2010-01-01", "2010-01-01"))
-                    comid_check.append(c)
-                except KeyError:
-                    missing_comids.append(c)
-            if len(missing_comids) > 0:
-                self.output.add_metadata("missing_comids", ", ".join(missing_comids))
+            if not self.waterbody:
+                for c in self.comids:
+                    try:
+                        test = ds["streamflow"].sel(feature_id=c).sel(time=slice("2010-01-01", "2010-01-01"))
+                        comid_check.append(c)
+                    except KeyError:
+                        missing_comids.append(c)
+                if len(missing_comids) > 0:
+                    self.output.add_metadata("missing_comids", ", ".join(missing_comids))
             with dask.config.set(**{'array.slicing.split_large_chunks': True}):
-                ds_streamflow = ds[variables].sel(feature_id=self.comids).sel(time=slice(
+                ds_streamflow = ds[request_variables].sel(feature_id=self.comids).sel(time=slice(
                     f"{self.start_date.year}-{self.start_date.month}-{self.start_date.day}",
                     f"{self.end_date.year}-{self.end_date.month}-{self.end_date.day}"
                 )).load()
@@ -99,11 +119,11 @@ class NWM:
         self.data = ds_streamflow
         self.output.add_metadata("retrieval_timestamp", datetime.datetime.now().isoformat())
         self.output.add_metadata("source_url", nwm_url)
-        self.output.add_metadata("variables", ", ".join(variables))
+        self.output.add_metadata("variables", ", ".join(request_variables))
         # scheduler.close()
         # client.close()
 
-    def set_output(self):
+    def set_output(self, return_dataframe: bool=False):
         if self.data is None:
             return
         for k, v in self.data.attrs.items():
@@ -120,12 +140,14 @@ class NWM:
                 self.output.add_metadata(f"{v}_missing_value_count", str(nan_count))
                 self.output.add_metadata(f"{v}_missing_value_flag", str(missing_value))
                 timeseries[v] = timeseries[v].replace(np.nan, missing_value)
+        if return_dataframe:
+            return timeseries
         i = 1
         first = True
         for idx, catchment in timeseries.groupby("feature_id"):
             i_meta = True
             for date, row in catchment.iterrows():
-                d = date[1].strftime('%Y-%m-%d %H')
+                d = date[0].strftime('%Y-%m-%d %H')
                 if first:
                     self.output.data[d] = [r for r in row[variables]]
                 else:
@@ -137,3 +159,27 @@ class NWM:
                         i += 1
                     i_meta = False
             first = False
+
+
+if __name__ == "__main__":
+    import time
+    # import asyncio
+
+    start_date = "2010-01-01"
+    end_date = "2010-12-31"
+    comids = [2043493]
+    # comids = [6277975, 6278087]
+    # comids = [6277975, 6278087]
+
+    t0 = time.time()
+    nwm = NWM(start_date=start_date, end_date=end_date, comids=comids)
+    scheduler = LocalCluster(n_workers=10, threads_per_worker=2, processes=False)
+    nwm.request_timeseries(scheduler=scheduler, optimize=True)
+    t1 = time.time()
+    print(f"Request time: {round(t1-t0, 4) / 60} min(s)")
+    df = nwm.set_output(return_dataframe=True)
+    t2 = time.time()
+    print(f"Set output time: {round(t2-t1, 4)} sec")
+    # print(df)
+
+# (4, 10, opt: True nwm_2: True) = 3.84757 min
