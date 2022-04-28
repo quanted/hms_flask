@@ -279,10 +279,12 @@ class NWMDownload(Resource):
     parser.add_argument('comid')
     parser.add_argument('startDate')
     parser.add_argument('endDate')
-    parser.add_argument('timestep')
+    parser.add_argument('waterbody', type=str)
 
     def get(self):
         args = self.parser.parse_args()
+
+        waterbody = args.waterbody.lower() == "true"
 
         hash = hashlib.md5(json.dumps(
             {'dataset': args.dataset, 'comids': args.comid, 'startDate': args.startDate, 'endDate': args.endDate},
@@ -294,21 +296,21 @@ class NWMDownload(Resource):
         task_id = str(uuid.uuid4())
         save_status(task_id=task_id, status="PENDING", message="nwm data download")
         dask_client = get_dask_client()
-        test_task = dask_client.submit(NWMDownload.get_data, task_id, args.dataset, args.comid, args.startDate, args.endDate,
+        test_task = dask_client.submit(NWMDownload.get_data, task_id, args.dataset, args.comid, args.startDate, args.endDate, waterbody,
                                        key=task_id)
         fire_and_forget(test_task)
         return Response(json.dumps({'job_id': task_id}))
 
     @staticmethod
-    def get_data(task_id, dataset, comid, startDate, endDate):
+    def get_data(task_id, dataset, comid, startDate, endDate, waterbody):
         comids = comid.split(",")
         save_status(task_id=task_id, status="STARTED")
         logger.info(f"Starting NWM download task, ID: {task_id}")
         time0 = time.time()
         try:
             nwm2 = os.getenv("NWM_21", "True") == "True"
-            nwm = NWM(start_date=startDate, end_date=endDate, comids=comids)
-            nwm.request_timeseries(optimize=True, nwm_21=nwm2)
+            nwm = NWM(start_date=startDate, end_date=endDate, comids=comids, waterbody=waterbody)
+            nwm.request_timeseries(optimize=True)
             nwm.set_output()
         except Exception as e:
             logging.warning(f"Error attempting to retrieve NWM data, ID: {task_id}, error: {e}")
