@@ -66,6 +66,7 @@ class HMSTaskData(Resource):
     def get(self):
         args = self.parser.parse_args()
         task_id = args.job_id
+        print(f"Data request for job: {task_id}")
         if task_id is not None:
             task = celery.AsyncResult(task_id)
             if task.status == "SUCCESS":
@@ -76,6 +77,7 @@ class HMSTaskData(Resource):
                     data = None
                     print("No data for mongodb: hms, posts: data, id: {}".format(task_id))
                 else:
+                    print(f"Data found. Loading data from mongodb for job: {task_id}")
                     data = json.loads(json.dumps(posts_data['data']))
                 return Response(json.dumps({'id': task.id, 'status': task.status, 'data': data}))
             else:
@@ -93,6 +95,7 @@ class HMSTaskData(Resource):
                         status = "SUCCESS"
                     else:
                         status = task.status
+                    print(f"Data found, status is: {status}. Loading data from mongodb for job: {task_id}")
                     return Response(json.dumps({'id': task.id, 'status': status, 'data': data}))
                 except Exception as ex:
                     return Response(json.dumps({'id': task.id, 'status': task.status}))
