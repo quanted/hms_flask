@@ -28,13 +28,14 @@ app = Flask(__name__)
 app.config.update(
     DEBUG=True
 )
+
 api = Api(app)
 
 PROJECT_ROOT = os.path.abspath(os.path.dirname(__file__))
 os.environ.update({
     'PROJECT_ROOT': PROJECT_ROOT
 })
-# logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.DEBUG)
 
 
 class StatusTest(Resource):
