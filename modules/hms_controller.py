@@ -296,6 +296,7 @@ class NWMDownload(Resource):
         task_id = str(uuid.uuid4())
         save_status(task_id=task_id, status="PENDING", message="nwm data download")
         dask_client = get_dask_client()
+        # test_task = NWMDownload.get_data(task_id, args.dataset, args.comid, args.startDate, args.endDate, waterbody)
         test_task = dask_client.submit(NWMDownload.get_data, task_id, args.dataset, args.comid, args.startDate, args.endDate, waterbody,
                                        key=task_id)
         fire_and_forget(test_task)
