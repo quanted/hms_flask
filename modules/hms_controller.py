@@ -35,11 +35,11 @@ def connect_to_mongoDB(database=None):
         database = 'flask_hms'
     if IN_DOCKER == "False":
         # Dev env mongoDB
-        logging.info("Connecting to mongoDB at: mongodb://localhost:27017/0")
+        logging.debug("Connecting to mongoDB at: mongodb://localhost:27017/0")
         mongo = pymongo.MongoClient(host='mongodb://localhost:27017/0')
     else:
         # Production env mongoDB
-        logging.info("Connecting to mongoDB at: mongodb://mongodb:27017/0")
+        logging.debug("Connecting to mongoDB at: mongodb://mongodb:27017/0")
         mongo = pymongo.MongoClient(host='mongodb://mongodb:27017/0')
     mongo_db = mongo[database]
     if database == 'flask_hms':
@@ -66,7 +66,7 @@ class HMSTaskData(Resource):
     def get(self):
         args = self.parser.parse_args()
         task_id = args.job_id
-        print(f"Data request for job: {task_id}")
+        logging.debug(f"Data request for job: {task_id}")
         if task_id is not None:
             task = celery.AsyncResult(task_id)
             if task.status == "SUCCESS":
@@ -75,9 +75,9 @@ class HMSTaskData(Resource):
                 posts_data = posts.find_one({'_id': task_id})
                 if posts_data is None:
                     data = None
-                    print("No data for mongodb: hms, posts: data, id: {}".format(task_id))
+                    logging.debug("No data for mongodb: hms, posts: data, id: {}".format(task_id))
                 else:
-                    print(f"Data found. Loading data from mongodb for job: {task_id}")
+                    logging.debug(f"Data found. Loading data from mongodb for job: {task_id}")
                     data = json.loads(json.dumps(posts_data['data']))
                 return Response(json.dumps({'id': task.id, 'status': task.status, 'data': data}))
             else:
@@ -95,7 +95,7 @@ class HMSTaskData(Resource):
                         status = "SUCCESS"
                     else:
                         status = task.status
-                    print(f"Data found, status is: {status}. Loading data from mongodb for job: {task_id}")
+                    logging.debug(f"Data found, status is: {status}. Loading data from mongodb for job: {task_id}")
                     return Response(json.dumps({'id': task.id, 'status': status, 'data': data}))
                 except Exception as ex:
                     return Response(json.dumps({'id': task.id, 'status': task.status}))
