@@ -61,13 +61,12 @@ class HMSTaskData(Resource):
     Controller class to retrieve data from the mongoDB database and/or checking status of a task
     """
     parser = parser_base.copy()
-    parser.add_argument('job_id')
+    parser.add_argument('job_id', location='args')
 
     def get(self):
         args = self.parser.parse_args()
         task_id = args.job_id
         logging.info(f"Data request for job: {task_id}")
-        print(f"Data request for job: {task_id}")
         if task_id is not None:
             task = celery.AsyncResult(task_id)
             if task.status == "SUCCESS":
