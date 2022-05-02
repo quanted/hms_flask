@@ -71,29 +71,29 @@ class NWM:
         for k, v in self.catchment["features"][0]["properties"].items():
             self.output.add_metadata(k, v)
 
-    def request_timeseries(self, scheduler=None, optimize: bool = False):
+    def request_timeseries(self, scheduler=None, optimize: bool = True):
         warnings.filterwarnings("ignore", category=ResourceWarning)
         if not scheduler:
             scheduler = os.getenv('DASK_SCHEDULER', "127.0.0.1:8786")
         # scheduler = LocalCluster()
         client = Client(scheduler)
-        logging.info(f"Request zarr data from: {nwm_url}")
         request_url = nwm_21_url
         request_variables = variables
 
         if self.waterbody:
-            logging.info(f"Using NWM 2.1 URL: {nwm_21_url}")
+            logging.info("Requesting NWM waterbody data")
             request_url = nwm_21_wb_url
             request_variables = wb_variables
+        logging.info(f"Using NWM 2.1 URL: {request_url}")
 
         if optimize:
             s3 = s3fs.S3FileSystem(anon=True)
-            store = s3fs.S3Map(root=nwm_21_url, s3=s3, check=False)
+            store = s3fs.S3Map(root=request_url, s3=s3, check=False)
 
             ds = xr.open_zarr(store=store, consolidated=True)
 
             with dask.config.set(**{'array.slicing.split_large_chunks': True}):
-                ds_streamflow = ds[variables].sel(feature_id=self.comids).sel(time=slice(
+                ds_streamflow = ds[request_variables].sel(feature_id=self.comids).sel(time=slice(
                     f"{self.start_date.year}-{self.start_date.month}-{self.start_date.day}",
                     f"{self.end_date.year}-{self.end_date.month}-{self.end_date.day}"
                 )).load()
@@ -129,12 +129,13 @@ class NWM:
         for k, v in self.data.attrs.items():
             self.output.add_metadata(k, v)
         j = 1
+        vars = wb_variables if self.waterbody else variables
         for c in self.comids:
-            for v in variables:
+            for v in vars:
                 self.output.metadata[f"column_{j}_units"] = str(self.data.data_vars[v].attrs["units"])
                 j += 1
         timeseries = self.data.to_dataframe()
-        for v in variables:
+        for v in vars:
             nan_count = timeseries[v].isna().sum()
             if nan_count > 0:
                 self.output.add_metadata(f"{v}_missing_value_count", str(nan_count))
@@ -149,12 +150,12 @@ class NWM:
             for date, row in catchment.iterrows():
                 d = date[0].strftime('%Y-%m-%d %H')
                 if first:
-                    self.output.data[d] = [r for r in row[variables]]
+                    self.output.data[d] = [r for r in row[vars]]
                 else:
-                    for r in row[variables]:
+                    for r in row[vars]:
                         self.output.data[d].append(r)
                 if i_meta:
-                    for v in variables:
+                    for v in vars:
                         self.output.metadata[f"column_{i}"] = f"{v}-{idx}"
                         i += 1
                     i_meta = False
