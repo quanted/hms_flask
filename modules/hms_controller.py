@@ -236,7 +236,7 @@ class NWMDownload(Resource):
         time0 = time.time()
         try:
             nwm = NWM(start_date=startDate, end_date=endDate, comids=comids, waterbody=waterbody)
-            nwm.request_timeseries()
+            nwm.request_timeseries(optimize=True)
             nwm.set_output()
         except Exception as e:
             logging.warning(f"Error attempting to retrieve NWM data: {e}")
