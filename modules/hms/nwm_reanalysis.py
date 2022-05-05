@@ -85,7 +85,7 @@ class NWM:
             request_url = nwm_21_wb_url
             request_variables = wb_variables
         logging.info(f"Using NWM 2.1 URL: {request_url}")
-
+        logging.info(f"Request data for COMIDS: {self.comids}")
         if optimize:
             s3 = s3fs.S3FileSystem(anon=True)
             store = s3fs.S3Map(root=request_url, s3=s3, check=False)
