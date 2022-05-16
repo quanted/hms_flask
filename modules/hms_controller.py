@@ -199,7 +199,7 @@ class NWMDownload(Resource):
     parser.add_argument('startDate', location='args')
     parser.add_argument('endDate', location='args')
     parser.add_argument('timestep', location='args')
-    parser.add_argument('waterbody', location='args')
+    parser.add_argument('waterbody', location='args', default="false")
 
     def get(self):
         args = self.parser.parse_args()
