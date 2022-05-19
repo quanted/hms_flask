@@ -85,8 +85,9 @@ class NWM:
             request_url = nwm_21_wb_url
             request_variables = wb_variables
         logging.info(f"Using NWM 2.1 URL: {request_url}")
-
+        logging.info(f"Request data for COMIDS: {self.comids}")
         if optimize:
+            logging.info("Executing optimized nwm data call")
             s3 = s3fs.S3FileSystem(anon=True)
             store = s3fs.S3Map(root=request_url, s3=s3, check=False)
 
@@ -98,6 +99,7 @@ class NWM:
                     f"{self.end_date.year}-{self.end_date.month}-{self.end_date.day}"
                 )).load()
         else:
+            logging.info("Executing non-optimized nwm data call")
             ds = xr.open_zarr(fsspec.get_mapper(request_url, anon=True), consolidated=True)
             comid_check = []
             missing_comids = []
@@ -114,7 +116,7 @@ class NWM:
                 ds_streamflow = ds[request_variables].sel(feature_id=self.comids).sel(time=slice(
                     f"{self.start_date.year}-{self.start_date.month}-{self.start_date.day}",
                     f"{self.end_date.year}-{self.end_date.month}-{self.end_date.day}"
-                )).load()
+                )).load(optimize_graph=False, traverse=False)
 
         self.data = ds_streamflow
         self.output.add_metadata("retrieval_timestamp", datetime.datetime.now().isoformat())

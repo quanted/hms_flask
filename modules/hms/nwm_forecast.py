@@ -10,6 +10,7 @@ import requests
 import json
 import time
 import copy
+import ssl
 from datetime import datetime, timedelta
 
 
@@ -92,6 +93,7 @@ class NWMForecastData:
         :return: True if timestep is present, otherwise False
         """
         request_url = self.base_url + datestamp + "/" + self.dtype + "/"
+
         dir_check = requests.get(request_url, verify=False)
         if dir_check.status_code == 200:
             return True
@@ -112,6 +114,7 @@ class NWMForecastData:
         t = str(t) if t >= 10 else "0{}".format(t)
         f = str(f) if f >= 10 else "0{}".format(f)
         request_url = self.base_url + self.datestamp + "/" + self.dtype + "/nwm.t{}z.short_range.".format(t) + self.dataset + ".f0{}.conus.nc".format(f)
+
         file_check = requests.get(request_url, verify=False)
         if file_check.status_code == 200:
             self.data[f] = netCDF4.Dataset("inmemory.nc", memory=bytes(file_check.content))

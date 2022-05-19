@@ -281,7 +281,7 @@ class NWMDownload(Resource):
     parser.add_argument('comid', location='args')
     parser.add_argument('startDate', location='args')
     parser.add_argument('endDate', location='args')
-    parser.add_argument('waterbody', type=str, location='args')
+    parser.add_argument('waterbody', type=str, location='args', default ='false')
 
     def get(self):
         args = self.parser.parse_args()
@@ -312,7 +312,7 @@ class NWMDownload(Resource):
         time0 = time.time()
         try:
             nwm = NWM(start_date=startDate, end_date=endDate, comids=comids, waterbody=waterbody)
-            nwm.request_timeseries(optimize=True)
+            nwm.request_timeseries(optimize=False)
             nwm.set_output()
         except Exception as e:
             logging.warning(f"Error attempting to retrieve NWM data, ID: {task_id}, error: {e}")
