@@ -34,6 +34,8 @@ variables = ["streamflow", "velocity"]
 nwm_21_wb_url = "s3://noaa-nwm-retrospective-2-1-zarr-pds/lakeout.zarr"
 wb_variables = ["inflow", "outflow", "water_sfc_elev"]
 
+lakeparm_path = os.path.join("/src","hms-data", "LAKEPARM_CONUS.nwm.v2.1.nc")
+
 missing_value = -9999
 
 
@@ -125,6 +127,12 @@ class NWM:
         # scheduler.close()
         # client.close()
 
+    def _load_lakeparm(self):
+        lakenc = xr.open_dataset(lakeparm_path)
+        lake_df = lakenc[["lake_id", "LkArea", "OrificeE"]].to_dataframe()
+        lake_data = lake_df.loc[lake_df['lake_id'].isin(self.comids)]
+        return lake_data
+
     def set_output(self, return_dataframe: bool=False):
         if self.data is None:
             return
@@ -147,10 +155,15 @@ class NWM:
             return timeseries
         i = 1
         first = True
+        if self.waterbody:
+            vars.append("volume")
+            lake_data = self._load_lakeparm()
+            timeseries["volume"] = (float(lake_data["LkArea"]) * 1000000.0) * (timeseries["water_sfc_elev"] - float(lake_data["OrificeE"]))
+
         for idx, catchment in timeseries.groupby("feature_id"):
             i_meta = True
             for date, row in catchment.iterrows():
-                d = date[1].strftime('%Y-%m-%d %H')
+                d = date[0].strftime('%Y-%m-%d %H')
                 if first:
                     self.output.data[d] = [r for r in row[vars]]
                 else:
@@ -162,11 +175,12 @@ class NWM:
                         i += 1
                     i_meta = False
             first = False
+        if self.waterbody:
+            self.output.metadata[f"column_{i-1}_units"] = "m3"
 
 
 if __name__ == "__main__":
     import time
-    # import asyncio
 
     start_date = "2010-01-01"
     end_date = "2010-12-31"
