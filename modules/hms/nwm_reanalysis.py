@@ -176,8 +176,7 @@ class NWM:
                     i_meta = False
             first = False
         if self.waterbody:
-            self.output.metadata[f"column_{i}"] = "volume"
-            self.output.metadata[f"column_{i}_units"] = "m3"
+            self.output.metadata[f"column_{i-1}_units"] = "m3"
 
 
 if __name__ == "__main__":
