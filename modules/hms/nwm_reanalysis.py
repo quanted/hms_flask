@@ -163,7 +163,7 @@ class NWM:
         for idx, catchment in timeseries.groupby("feature_id"):
             i_meta = True
             for date, row in catchment.iterrows():
-                d = date.strftime('%Y-%m-%d %H')
+                d = date[1].strftime('%Y-%m-%d %H')
                 if first:
                     self.output.data[d] = [r for r in row[vars]]
                 else:
