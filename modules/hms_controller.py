@@ -198,7 +198,6 @@ class NWMDownload(Resource):
     parser.add_argument('comid', location='args')
     parser.add_argument('startDate', location='args')
     parser.add_argument('endDate', location='args')
-    parser.add_argument('timestep', location='args')
     parser.add_argument('waterbody', location='args', default="false")
 
     def get(self):
@@ -216,7 +215,7 @@ class NWMDownload(Resource):
             if len(exists["data"]["data"]) > 0:
                 return Response(json.dumps({'job_id': exists["_id"]}))
         task_id = self.start_async.apply_async(
-            args=(args.dataset, args.comid, args.startDate, args.endDate, args.timestep, waterbody), queue="qed")
+            args=(args.dataset, args.comid, args.startDate, args.endDate, waterbody), queue="qed")
         return Response(json.dumps({'job_id': task_id.id}))
 
         # task_id = str(uuid.uuid4())
@@ -224,7 +223,7 @@ class NWMDownload(Resource):
         # return Response(json.dumps({'job_id': task_id}))
 
     @celery.task(name='hms_nwm_data', bind=True)
-    def start_async(self, dataset, comid, startDate, endDate, uuid=None, waterbody: bool = False):
+    def start_async(self, dataset, comid, startDate, endDate, waterbody: bool = False, uuid=None, ):
         if uuid:
             task_id = uuid
         else:
@@ -236,7 +235,7 @@ class NWMDownload(Resource):
         time0 = time.time()
         try:
             nwm = NWM(start_date=startDate, end_date=endDate, comids=comids, waterbody=waterbody)
-            nwm.request_timeseries(optimize=True)
+            nwm.request_timeseries(optimize=False)
             nwm.set_output()
         except Exception as e:
             logging.warning(f"Error attempting to retrieve NWM data: {e}")
