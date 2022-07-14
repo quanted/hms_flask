@@ -124,6 +124,7 @@ class NWM:
         self.output.add_metadata("retrieval_timestamp", datetime.datetime.now().isoformat())
         self.output.add_metadata("source_url", nwm_url)
         self.output.add_metadata("variables", ", ".join(request_variables))
+        logging.info("NWM data request completed")
         # scheduler.close()
         # client.close()
 
@@ -134,6 +135,7 @@ class NWM:
         return lake_data
 
     def set_output(self, return_dataframe: bool=False):
+        logging.info("Starting dataframe conversion")
         if self.data is None:
             return
         for k, v in self.data.attrs.items():
