@@ -105,15 +105,15 @@ class NWM:
             ds = xr.open_zarr(fsspec.get_mapper(request_url, anon=True), consolidated=True)
             comid_check = []
             missing_comids = []
-            if not self.waterbody:
-                for c in self.comids:
-                    try:
-                        test = ds["streamflow"].sel(feature_id=c).sel(time=slice("2010-01-01", "2010-01-01"))
-                        comid_check.append(c)
-                    except KeyError:
-                        missing_comids.append(c)
-                if len(missing_comids) > 0:
-                    self.output.add_metadata("missing_comids", ", ".join(missing_comids))
+#             if not self.waterbody:
+#                 for c in self.comids:
+#                     try:
+#                         test = ds["streamflow"].sel(feature_id=c).sel(time=slice("2010-01-01", "2010-01-01"))
+#                         comid_check.append(c)
+#                     except KeyError:
+#                         missing_comids.append(c)
+#                 if len(missing_comids) > 0:
+#                     self.output.add_metadata("missing_comids", ", ".join(missing_comids))
             with dask.config.set(**{'array.slicing.split_large_chunks': True}):
                 ds_streamflow = ds[request_variables].sel(feature_id=self.comids).sel(time=slice(
                     f"{self.start_date.year}-{self.start_date.month}-{self.start_date.day}",
@@ -160,6 +160,8 @@ class NWM:
             lake_data = self._load_lakeparm()
             timeseries["volume"] = (float(lake_data["LkArea"]) * 1000000.0) * (timeseries["water_sfc_elev"] - float(lake_data["OrificeE"]))
 
+        logging.info("Converting NWM pandas dataframe to TimeSeriesOutput format")
+        logging.info(timeseries.head())
         for idx, catchment in timeseries.groupby("feature_id"):
             i_meta = True
             for date, row in catchment.iterrows():
