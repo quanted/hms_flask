@@ -237,20 +237,22 @@ class NWMDownload(Resource):
             nwm = NWM(start_date=startDate, end_date=endDate, comids=comids, waterbody=waterbody)
             nwm.request_timeseries(optimize=False)
             nwm.set_output()
+            nwm_data = nwm.output.to_dict()
+            hash = hashlib.md5(json.dumps(
+                {'dataset': dataset, 'comids': comid, 'startDate': startDate, 'endDate': endDate}, sort_keys=True).encode()).hexdigest()
         except Exception as e:
             logging.warning(f"Error attempting to retrieve NWM data: {e}")
-            return
+            nwm_data = {'data': None, 'metadata': "error, unable to retrieve nwm data for comid=" + comid}
+            hash = None
+   
         time1 = time.time()
-        hash = hashlib.md5(json.dumps(
-            {'dataset': dataset, 'comids': comid, 'startDate': startDate, 'endDate': endDate},
-            sort_keys=True).encode()).hexdigest()
         logging.info("NWM timeseries runtime: {} sec ".format((round(time1-time0, 4))))
         logging.info("hms_controller.NWM download completed.")
         logging.info("Adding data to mongoDB...")
         mongo_db = connect_to_mongoDB("hms")
         posts = mongo_db["data"]
         time_stamp = datetime.utcnow()
-        data = {'_id': task_id, 'date': time_stamp, 'data': nwm.output.to_dict(), 'hash': hash}
+        data = {'_id': task_id, 'date': time_stamp, 'data': nwm_data, 'hash': hash}
         query = {'_id': task_id}
         exists = posts.find_one(query)
         if exists:
