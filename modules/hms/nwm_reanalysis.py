@@ -135,13 +135,13 @@ class NWM:
         return lake_data
 
     def set_output(self, return_dataframe: bool=False):
-#         logging.info("Starting dataframe conversion")
         if self.data is None:
             return
         for k, v in self.data.attrs.items():
             self.output.add_metadata(k, v)
         j = 1
         vars = wb_variables if self.waterbody else variables
+
         for c in self.comids:
             for v in vars:
                 self.output.metadata[f"column_{j}_units"] = str(self.data.data_vars[v].attrs["units"])
@@ -162,8 +162,6 @@ class NWM:
             lake_data = self._load_lakeparm()
             timeseries["volume"] = (float(lake_data["LkArea"]) * 1000000.0) * (timeseries["water_sfc_elev"] - float(lake_data["OrificeE"]))
 
-#         logging.info("Converting NWM pandas dataframe to TimeSeriesOutput format")
-#         logging.info(timeseries.head())
         for idx, catchment in timeseries.groupby("feature_id"):
             i_meta = True
             for date, row in catchment.iterrows():
