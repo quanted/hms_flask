@@ -1,6 +1,6 @@
 import os
 import json
-
+import copy
 import pandas as pd
 import requests
 import fsspec
@@ -80,12 +80,12 @@ class NWM:
         # scheduler = LocalCluster()
         client = Client(scheduler)
         request_url = nwm_21_url
-        request_variables = variables
+        request_variables = copy.copy(variables)
 
         if self.waterbody:
             logging.info("Requesting NWM waterbody data")
             request_url = nwm_21_wb_url
-            request_variables = wb_variables
+            request_variables = copy.copy(wb_variables)
         logging.info(f"Using NWM 2.1 URL: {request_url}")
         logging.info(f"Request data for COMIDS: {self.comids}")
         if optimize:
@@ -140,7 +140,7 @@ class NWM:
         for k, v in self.data.attrs.items():
             self.output.add_metadata(k, v)
         j = 1
-        vars = wb_variables if self.waterbody else variables
+        vars = copy.copy(wb_variables) if self.waterbody else copy.copy(variables)
 
         for c in self.comids:
             for v in vars:
