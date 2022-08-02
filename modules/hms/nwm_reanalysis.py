@@ -120,7 +120,6 @@ class NWM:
             self.output.add_metadata(k, v)
         j = 1
         vars = copy.copy(wb_variables) if self.waterbody else copy.copy(variables)
-
         for c in self.comids:
             for v in vars:
                 self.output.metadata[f"column_{j}_units"] = str(self.data.data_vars[v].attrs["units"])
