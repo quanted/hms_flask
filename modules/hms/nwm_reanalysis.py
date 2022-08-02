@@ -1,6 +1,6 @@
 import os
 import json
-
+import copy
 import pandas as pd
 import requests
 import fsspec
@@ -80,45 +80,25 @@ class NWM:
         # scheduler = LocalCluster()
         client = Client(scheduler)
         request_url = nwm_21_url
-        request_variables = variables
+        request_variables = copy.copy(variables)
 
         if self.waterbody:
             logging.info("Requesting NWM waterbody data")
             request_url = nwm_21_wb_url
-            request_variables = wb_variables
+            request_variables = copy.copy(wb_variables)
         logging.info(f"Using NWM 2.1 URL: {request_url}")
         logging.info(f"Request data for COMIDS: {self.comids}")
-        if optimize:
-            logging.info("Executing optimized nwm data call")
-            s3 = s3fs.S3FileSystem(anon=True)
-            store = s3fs.S3Map(root=request_url, s3=s3, check=False)
+        logging.info("Executing optimized nwm data call")
+        s3 = s3fs.S3FileSystem(anon=True)
+        store = s3fs.S3Map(root=request_url, s3=s3, check=False)
 
-            ds = xr.open_zarr(store=store, consolidated=True)
+        ds = xr.open_zarr(store=store, consolidated=True)
 
-            with dask.config.set(**{'array.slicing.split_large_chunks': True}):
-                ds_streamflow = ds[request_variables].sel(feature_id=self.comids).sel(time=slice(
-                    f"{self.start_date.year}-{self.start_date.month}-{self.start_date.day}",
-                    f"{self.end_date.year}-{self.end_date.month}-{self.end_date.day}"
-                )).load()
-        else:
-            logging.info("Executing non-optimized nwm data call")
-            ds = xr.open_zarr(fsspec.get_mapper(request_url, anon=True), consolidated=True)
-            comid_check = []
-            missing_comids = []
-            if not self.waterbody:
-                for c in self.comids:
-                    try:
-                        test = ds["streamflow"].sel(feature_id=c).sel(time=slice("2010-01-01", "2010-01-01"))
-                        comid_check.append(c)
-                    except KeyError:
-                        missing_comids.append(c)
-                if len(missing_comids) > 0:
-                    self.output.add_metadata("missing_comids", ", ".join(missing_comids))
-            with dask.config.set(**{'array.slicing.split_large_chunks': True}):
-                ds_streamflow = ds[request_variables].sel(feature_id=self.comids).sel(time=slice(
-                    f"{self.start_date.year}-{self.start_date.month}-{self.start_date.day}",
-                    f"{self.end_date.year}-{self.end_date.month}-{self.end_date.day}"
-                )).load(optimize_graph=False, traverse=False)
+        with dask.config.set(**{'array.slicing.split_large_chunks': True}):
+            ds_streamflow = ds[request_variables].sel(feature_id=self.comids).sel(time=slice(
+                f"{self.start_date.year}-{self.start_date.month}-{self.start_date.day}",
+                f"{self.end_date.year}-{self.end_date.month}-{self.end_date.day}"
+            )).load(optimize_graph=True, traverse=False)
 
         self.data = ds_streamflow
         self.output.add_metadata("retrieval_timestamp", datetime.datetime.now().isoformat())
@@ -139,7 +119,8 @@ class NWM:
         for k, v in self.data.attrs.items():
             self.output.add_metadata(k, v)
         j = 1
-        vars = wb_variables if self.waterbody else variables
+        vars = copy.copy(wb_variables) if self.waterbody else copy.copy(variables)
+
         for c in self.comids:
             for v in vars:
                 self.output.metadata[f"column_{j}_units"] = str(self.data.data_vars[v].attrs["units"])
