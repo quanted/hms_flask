@@ -19,6 +19,7 @@ try:
     from .timeseries import TimeSeriesOutput
 except ImportError:
     from timeseries import TimeSeriesOutput
+import multiprocessing as mp
 
 warnings.filterwarnings("ignore", category=ResourceWarning)
 logging.getLogger('boto3').setLevel(logging.CRITICAL)
@@ -73,7 +74,7 @@ class NWM:
         for k, v in self.catchment["features"][0]["properties"].items():
             self.output.add_metadata(k, v)
 
-    def request_timeseries(self, scheduler=None, optimize: bool = True):
+    def request_timeseries(self, scheduler=None):
         warnings.filterwarnings("ignore", category=ResourceWarning)
         if not scheduler:
             scheduler = os.getenv('DASK_SCHEDULER', "127.0.0.1:8786")
@@ -104,8 +105,69 @@ class NWM:
         self.output.add_metadata("retrieval_timestamp", datetime.datetime.now().isoformat())
         self.output.add_metadata("source_url", nwm_url)
         self.output.add_metadata("variables", ", ".join(request_variables))
-        # scheduler.close()
-        # client.close()
+
+    def request_timeseries_parallel(self, scheduler=None):
+        warnings.filterwarnings("ignore", category=ResourceWarning)
+        if not scheduler:
+            scheduler = os.getenv('DASK_SCHEDULER', "127.0.0.1:8786")
+        client = Client(scheduler)
+
+        request_url = nwm_21_url
+        request_variables = copy.copy(variables)
+        n_days = 365
+
+        if self.waterbody:
+            logging.info("Requesting NWM waterbody data")
+            request_url = nwm_21_wb_url
+            request_variables = copy.copy(wb_variables)
+
+            request_inputs = [[copy.copy(self.start_date), copy.copy(self.start_date), request_variables, request_url]]
+        else:
+            request_inputs = []
+            i_date = copy.copy(self.start_date)
+            j_date = copy.copy(self.start_date) + datetime.timedelta(days=n_days)
+            e_date = copy.copy(j_date)
+
+            while e_date < self.end_date:
+                if j_date >= self.end_date:
+                    e_date = copy.copy(self.end_date)
+                else:
+                    e_date = copy.copy(j_date)
+                request_inputs.append([copy.copy(i_date), copy.copy(e_date), request_variables, request_url])
+                i_date = copy.copy(j_date)
+                j_date = copy.copy(e_date) + datetime.timedelta(days=n_days)
+
+        logging.info(f"Using NWM 2.1 URL: {request_url}")
+        logging.info(f"Request data for COMIDS: {self.comids}")
+        logging.info("Executing optimized nwm data call")
+        cpu_count = os.getenv('PARALLEL_PROCESSES', mp.cpu_count())
+        # cpu_count = cpu_count if cpu_count <= len(request_inputs) else len(request_inputs)
+        # cpu_count = 4
+        pool = mp.Pool(cpu_count)
+        data_results = pool.starmap_async(self.request_timeseries_i, request_inputs).get()
+        pool.close()
+        pool.join()
+        ds_streamflow = xr.merge(data_results)
+
+        self.data = ds_streamflow
+        self.output.add_metadata("retrieval_timestamp", datetime.datetime.now().isoformat())
+        self.output.add_metadata("source_url", nwm_url)
+        self.output.add_metadata("variables", ", ".join(request_variables))
+
+    def request_timeseries_i(self, start_date, end_date, request_variables, request_url):
+        s3 = s3fs.S3FileSystem(anon=True)
+        s3.connect_timeout = 60 * 60 * 1
+        s3.read_timeout = 60 * 60 * 1
+        store = s3fs.S3Map(root=request_url, s3=s3, check=False)
+
+        ds = xr.open_zarr(store=store, consolidated=True)
+
+        with dask.config.set(**{'array.slicing.split_large_chunks': True}):
+            ds_streamflow = ds[request_variables].sel(feature_id=self.comids).sel(time=slice(
+                f"{start_date.year}-{start_date.month}-{start_date.day}",
+                f"{end_date.year}-{end_date.month}-{end_date.day}"
+            )).load(optimize_graph=True, traverse=False)
+        return ds_streamflow
 
     def _load_lakeparm(self):
         lakenc = xr.open_dataset(lakeparm_path)
@@ -162,8 +224,8 @@ class NWM:
 if __name__ == "__main__":
     import time
 
-    start_date = "2010-01-01"
-    end_date = "2010-12-31"
+    start_date = "2000-01-01"
+    end_date = "2002-12-31"
     comids = [2043493]
     # comids = [6277975, 6278087]
     # comids = [6277975, 6278087]
@@ -171,12 +233,14 @@ if __name__ == "__main__":
     t0 = time.time()
     nwm = NWM(start_date=start_date, end_date=end_date, comids=comids)
     scheduler = LocalCluster(n_workers=10, threads_per_worker=2, processes=False)
-    nwm.request_timeseries(scheduler=scheduler, optimize=True)
+    nwm.request_timeseries(scheduler=scheduler)
+    # nwm.request_timeseries_parallel(scheduler=scheduler)
     t1 = time.time()
     print(f"Request time: {round(t1-t0, 4) / 60} min(s)")
     df = nwm.set_output(return_dataframe=True)
+    print(df.shape)
     t2 = time.time()
     print(f"Set output time: {round(t2-t1, 4)} sec")
-    # print(df)
+    print(f"Total Runtime: {round(t2-t0, 4)/60} min(s)")
 
 # (4, 10, opt: True nwm_2: True) = 3.84757 min
