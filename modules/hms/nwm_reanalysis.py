@@ -105,6 +105,8 @@ class NWM:
         self.output.add_metadata("retrieval_timestamp", datetime.datetime.now().isoformat())
         self.output.add_metadata("source_url", nwm_url)
         self.output.add_metadata("variables", ", ".join(request_variables))
+        # scheduler.close()
+        # client.close()
 
     def request_timeseries_parallel(self, scheduler=None):
         warnings.filterwarnings("ignore", category=ResourceWarning)
@@ -116,11 +118,14 @@ class NWM:
         request_variables = copy.copy(variables)
         n_days = 365
 
+        # s3 = s3fs.S3FileSystem(anon=True)
+        # s3.connect_timeout = 60 * 60 * 1
+        # s3.read_timeout = 60 * 60 * 1
+
         if self.waterbody:
             logging.info("Requesting NWM waterbody data")
             request_url = nwm_21_wb_url
             request_variables = copy.copy(wb_variables)
-
             request_inputs = [[copy.copy(self.start_date), copy.copy(self.start_date), request_variables, request_url]]
         else:
             request_inputs = []
@@ -144,9 +149,12 @@ class NWM:
         # cpu_count = cpu_count if cpu_count <= len(request_inputs) else len(request_inputs)
         # cpu_count = 4
         pool = mp.Pool(cpu_count)
-        data_results = pool.starmap_async(self.request_timeseries_i, request_inputs).get()
-        pool.close()
-        pool.join()
+        data_results = []
+        for r_inputs in request_inputs:
+            data_results.append(self.request_timeseries_i(*r_inputs))
+        # data_results = pool.starmap_async(self.request_timeseries_i, request_inputs).get()
+        # pool.close()
+        # pool.join()
         ds_streamflow = xr.merge(data_results)
 
         self.data = ds_streamflow
