@@ -151,6 +151,7 @@ class NWM:
         data_results = []
         for r_inputs in request_inputs:
             data_results.append(self.request_timeseries_i(*r_inputs))
+        logging.info(f"Completed NWM requests, n: {len(data_results)}")
         # data_results = pool.starmap_async(self.request_timeseries_i, request_inputs).get()
         # pool.close()
         # pool.join()
@@ -244,8 +245,9 @@ if __name__ == "__main__":
     nwm.request_timeseries_parallel(scheduler=scheduler)
     t1 = time.time()
     print(f"Request time: {round(t1-t0, 4) / 60} min(s)")
-    df = nwm.set_output(return_dataframe=True)
-    print(df.shape)
+    nwm.set_output()
+    # df = nwm.set_output(return_dataframe=True)
+    # print(df.shape)
     t2 = time.time()
     print(f"Set output time: {round(t2-t1, 4)} sec")
     print(f"Total Runtime: {round(t2-t0, 4)/60} min(s)")
