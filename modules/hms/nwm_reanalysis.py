@@ -132,7 +132,7 @@ class NWM:
             i_date = copy.copy(self.start_date)
             j_date = copy.copy(self.start_date) + datetime.timedelta(days=n_days)
             e_date = copy.copy(j_date)
-
+            logging.info(f"Request Variables: {request_variables}")
             while e_date < self.end_date:
                 if j_date >= self.end_date:
                     e_date = copy.copy(self.end_date)
@@ -144,7 +144,6 @@ class NWM:
 
         logging.info(f"Using NWM 2.1 URL: {request_url}")
         logging.info(f"Request data for COMIDS: {self.comids}")
-        logging.info("Executing optimized nwm data call")
         # cpu_count = os.getenv('PARALLEL_PROCESSES', mp.cpu_count())
         # cpu_count = cpu_count if cpu_count <= len(request_inputs) else len(request_inputs)
         # cpu_count = 4
@@ -241,8 +240,8 @@ if __name__ == "__main__":
     t0 = time.time()
     nwm = NWM(start_date=start_date, end_date=end_date, comids=comids)
     scheduler = LocalCluster(n_workers=10, threads_per_worker=2, processes=False)
-    nwm.request_timeseries(scheduler=scheduler)
-    # nwm.request_timeseries_parallel(scheduler=scheduler)
+    # nwm.request_timeseries(scheduler=scheduler)
+    nwm.request_timeseries_parallel(scheduler=scheduler)
     t1 = time.time()
     print(f"Request time: {round(t1-t0, 4) / 60} min(s)")
     df = nwm.set_output(return_dataframe=True)
