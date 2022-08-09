@@ -118,15 +118,11 @@ class NWM:
         request_variables = copy.copy(variables)
         n_days = 365
 
-        # s3 = s3fs.S3FileSystem(anon=True)
-        # s3.connect_timeout = 60 * 60 * 1
-        # s3.read_timeout = 60 * 60 * 1
-
         if self.waterbody:
             logging.info("Requesting NWM waterbody data")
             request_url = nwm_21_wb_url
             request_variables = copy.copy(wb_variables)
-            request_inputs = [[copy.copy(self.start_date), copy.copy(self.start_date), request_variables, request_url]]
+            request_inputs = [[copy.copy(self.start_date), copy.copy(self.end_date), request_variables, request_url]]
         else:
             request_inputs = []
             i_date = copy.copy(self.start_date)
@@ -169,7 +165,7 @@ class NWM:
         store = s3fs.S3Map(root=request_url, s3=s3, check=False)
 
         ds = xr.open_zarr(store=store, consolidated=True)
-
+        logging.info(f"Request for NWM data, COMIDS: {self.comids}, Start Date: {start_date}, End Date: {end_date}, Request Variables: {request_variables}")
         with dask.config.set(**{'array.slicing.split_large_chunks': True}):
             ds_streamflow = ds[request_variables].sel(feature_id=self.comids).sel(time=slice(
                 f"{start_date.year}-{start_date.month}-{start_date.day}",
