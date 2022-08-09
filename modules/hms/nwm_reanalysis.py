@@ -145,10 +145,10 @@ class NWM:
         logging.info(f"Using NWM 2.1 URL: {request_url}")
         logging.info(f"Request data for COMIDS: {self.comids}")
         logging.info("Executing optimized nwm data call")
-        cpu_count = os.getenv('PARALLEL_PROCESSES', mp.cpu_count())
+        # cpu_count = os.getenv('PARALLEL_PROCESSES', mp.cpu_count())
         # cpu_count = cpu_count if cpu_count <= len(request_inputs) else len(request_inputs)
         # cpu_count = 4
-        pool = mp.Pool(cpu_count)
+        # pool = mp.Pool(cpu_count)
         data_results = []
         for r_inputs in request_inputs:
             data_results.append(self.request_timeseries_i(*r_inputs))
