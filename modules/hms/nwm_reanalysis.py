@@ -53,6 +53,7 @@ class NWM:
         self.output = TimeSeriesOutput(source="nwm", dataset="streamflow")
         self.data = None
         self.waterbody = waterbody
+        self.n_days = 365
 
     def get_geometry(self):
         # NOT REQUIRED: direct query using COMID, has not been updated to handle more than 1 comid
@@ -89,7 +90,6 @@ class NWM:
             request_variables = copy.copy(wb_variables)
         logging.info(f"Using NWM 2.1 URL: {request_url}")
         logging.info(f"Request data for COMIDS: {self.comids}")
-        logging.info("Executing optimized nwm data call")
         s3 = s3fs.S3FileSystem(anon=True)
         store = s3fs.S3Map(root=request_url, s3=s3, check=False)
 
@@ -116,7 +116,7 @@ class NWM:
 
         request_url = nwm_21_url
         request_variables = copy.copy(variables)
-        n_days = 365
+        logging.info(f"NWM request start date: {self.start_date}, end date: {self.end_date}")
 
         if self.waterbody:
             logging.info("Requesting NWM waterbody data")
@@ -124,19 +124,21 @@ class NWM:
             request_variables = copy.copy(wb_variables)
             request_inputs = [[copy.copy(self.start_date), copy.copy(self.end_date), request_variables, request_url]]
         else:
+            initial = True
             request_inputs = []
             i_date = copy.copy(self.start_date)
-            j_date = copy.copy(self.start_date) + datetime.timedelta(days=n_days)
+            j_date = copy.copy(self.start_date) + datetime.timedelta(days=self.n_days)
             e_date = copy.copy(j_date)
             logging.info(f"Request Variables: {request_variables}")
-            while e_date < self.end_date:
+            while e_date < self.end_date or initial:
+                initial = False
                 if j_date >= self.end_date:
                     e_date = copy.copy(self.end_date)
                 else:
                     e_date = copy.copy(j_date)
                 request_inputs.append([copy.copy(i_date), copy.copy(e_date), request_variables, request_url])
                 i_date = copy.copy(j_date)
-                j_date = copy.copy(e_date) + datetime.timedelta(days=n_days)
+                j_date = copy.copy(e_date) + datetime.timedelta(days=self.n_days)
 
         logging.info(f"Using NWM 2.1 URL: {request_url}")
         logging.info(f"Request data for COMIDS: {self.comids}, Request Blocks: {len(request_inputs)}")
@@ -228,8 +230,8 @@ class NWM:
 if __name__ == "__main__":
     import time
 
-    start_date = "2000-01-01"
-    end_date = "2002-12-31"
+    start_date = "2015-01-01"
+    end_date = "2015-12-31"
     comids = [2043493]
     # comids = [6277975, 6278087]
     # comids = [6277975, 6278087]
