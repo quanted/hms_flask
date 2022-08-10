@@ -139,7 +139,7 @@ class NWM:
                 j_date = copy.copy(e_date) + datetime.timedelta(days=n_days)
 
         logging.info(f"Using NWM 2.1 URL: {request_url}")
-        logging.info(f"Request data for COMIDS: {self.comids}")
+        logging.info(f"Request data for COMIDS: {self.comids}, Request Blocks: {len(request_inputs)}")
         # cpu_count = os.getenv('PARALLEL_PROCESSES', mp.cpu_count())
         # cpu_count = cpu_count if cpu_count <= len(request_inputs) else len(request_inputs)
         # cpu_count = 4
