@@ -22,6 +22,7 @@ RUN conda run -n $CONDA_ENV_BASE --no-capture-output conda clean -acfy && \
     find /opt/conda -follow -type f -name '*.pyc' -delete && \
     find /opt/conda -follow -type f -name '*.js.map' -delete
 
+# Main image build
 FROM continuumio/miniconda3:4.10.3p0-alpine as prime
 
 ENV APP_USER=www-data
