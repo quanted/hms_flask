@@ -1,4 +1,4 @@
-FROM continuumio/miniconda3:4.10.3p0-alpine as base
+FROM continuumio/miniconda3:23.5.2-0-alpine as base
 
 ARG GDAL_VERSION=3.4.1
 ARG CONDA_ENV_BASE=pyenv
@@ -11,7 +11,7 @@ RUN pip install -U pip
 COPY requirements.txt /tmp/requirements.txt
 
 RUN conda config --add channels conda-forge
-RUN conda create -n $CONDA_ENV_BASE python=3.9.10 gdal=$GDAL_VERSION
+RUN conda create -n $CONDA_ENV_BASE python=3.10 gdal=$GDAL_VERSION
 RUN conda install -n $CONDA_ENV_BASE --file /tmp/requirements.txt
 RUN conda install -n $CONDA_ENV_BASE uwsgi
 RUN conda install --force-reinstall -n $CONDA_ENV_BASE fiona
@@ -23,7 +23,7 @@ RUN conda run -n $CONDA_ENV_BASE --no-capture-output conda clean -acfy && \
     find /opt/conda -follow -type f -name '*.js.map' -delete
 
 # Main image build
-FROM continuumio/miniconda3:4.10.3p0-alpine as prime
+FROM continuumio/miniconda3:23.5.2-0-alpine as prime
 
 ENV APP_USER=www-data
 ENV CONDA_ENV=/home/www-data/pyenv
