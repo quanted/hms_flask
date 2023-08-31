@@ -1,6 +1,6 @@
 FROM continuumio/miniconda3:23.5.2-0-alpine as base
 
-ARG GDAL_VERSION=3.4.1
+ARG GDAL_VERSION=3.7.1
 ARG CONDA_ENV_BASE=pyenv
 
 RUN apk update
