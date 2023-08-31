@@ -54,4 +54,4 @@ RUN chown -R $APP_USER:$APP_USER /src
 RUN chown $APP_USER:$APP_USER $CONDA_ENV
 USER $APP_USER
 
-CMD ["mamba", "run", "-p", "$CONDA_ENV", "--no-capture-output", "sh", "/src/hms_flask/start_flask.sh"]
+CMD ["conda", "run", "-p", "$CONDA_ENV", "--no-capture-output", "sh", "/src/hms_flask/start_flask.sh"]
