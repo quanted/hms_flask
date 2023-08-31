@@ -1,0 +1,57 @@
+FROM continuumio/miniconda3:23.5.2-0-alpine as base
+
+ARG GDAL_VERSION=3.7.1
+ARG CONDA_ENV_BASE=pyenv
+
+RUN apk update
+RUN apk upgrade
+RUN apk add --no-cache geos gdal cmake git gfortran sqlite sqlite-dev
+RUN pip install -U pip
+
+COPY requirements.txt /tmp/requirements.txt
+
+RUN conda config --add channels conda-forge
+
+RUN conda update -n base --all && \
+    conda install -n base mamba
+
+RUN mamba create -n $CONDA_ENV_BASE python=3.10 gdal=$GDAL_VERSION -y
+
+RUN mamba install -n $CONDA_ENV_BASE --file /tmp/requirements.txt -y
+RUN mamba install -n $CONDA_ENV_BASE uwsgi -y
+RUN mamba install --force-reinstall -n $CONDA_ENV_BASE fiona -y
+RUN mamba install --force-reinstall -n $CONDA_ENV_BASE geopandas -y
+
+RUN mamba run -n $CONDA_ENV_BASE --no-capture-output mamba clean -acfy && \
+    find /opt/conda -follow -type f -name '*.a' -delete && \
+    find /opt/conda -follow -type f -name '*.pyc' -delete && \
+    find /opt/conda -follow -type f -name '*.js.map' -delete
+
+# Main image build
+FROM continuumio/miniconda3:23.5.2-0-alpine as prime
+
+ENV APP_USER=www-data
+ENV CONDA_ENV=/home/www-data/pyenv
+
+RUN adduser -S $APP_USER -G $APP_USER
+
+RUN apk update
+RUN apk upgrade
+RUN apk add --no-cache geos gdal cmake git gfortran sqlite sqlite-dev
+
+COPY uwsgi.ini /etc/uwsgi/
+COPY . /src/hms_flask
+RUN chmod 755 /src/hms_flask/start_flask.sh
+WORKDIR /src/
+EXPOSE 8080
+
+COPY --from=base /opt/conda/envs/pyenv $CONDA_ENV
+
+ENV PYTHONPATH /src:/src/hms_flask/:$CONDA_ENV:$PYTHONPATH
+ENV PATH /src:/src/hms_flask/:$CONDA_ENV:$PATH
+
+RUN chown -R $APP_USER:$APP_USER /src
+RUN chown $APP_USER:$APP_USER $CONDA_ENV
+USER $APP_USER
+
+CMD ["mamba", "run", "-p", "$CONDA_ENV", "--no-capture-output", "sh", "/src/hms_flask/start_flask.sh"]
