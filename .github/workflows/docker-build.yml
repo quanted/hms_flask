@@ -70,7 +70,7 @@ jobs:
         with:
           context: .
           push: true
-          dockerfile: Dockerfile_Mamba
+          file: Dockerfile_Mamba
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
