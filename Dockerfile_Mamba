@@ -11,13 +11,18 @@ RUN pip install -U pip
 COPY requirements.txt /tmp/requirements.txt
 
 RUN conda config --add channels conda-forge
-RUN conda create -n $CONDA_ENV_BASE python=3.10 gdal=$GDAL_VERSION
-RUN conda install -n $CONDA_ENV_BASE --file /tmp/requirements.txt
-RUN conda install -n $CONDA_ENV_BASE uwsgi
-RUN conda install --force-reinstall -n $CONDA_ENV_BASE fiona
-RUN conda install --force-reinstall -n $CONDA_ENV_BASE geopandas
 
-RUN conda run -n $CONDA_ENV_BASE --no-capture-output conda clean -acfy && \
+RUN conda update -n base --all && \
+    conda install -n base mamba
+
+RUN mamba create -n $CONDA_ENV_BASE python=3.10 gdal=$GDAL_VERSION -y
+
+RUN mamba install -n $CONDA_ENV_BASE --file /tmp/requirements.txt -y
+RUN mamba install -n $CONDA_ENV_BASE uwsgi -y
+RUN mamba install --force-reinstall -n $CONDA_ENV_BASE fiona -y
+RUN mamba install --force-reinstall -n $CONDA_ENV_BASE geopandas -y
+
+RUN mamba run -n $CONDA_ENV_BASE --no-capture-output mamba clean -acfy && \
     find /opt/conda -follow -type f -name '*.a' -delete && \
     find /opt/conda -follow -type f -name '*.pyc' -delete && \
     find /opt/conda -follow -type f -name '*.js.map' -delete

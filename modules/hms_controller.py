@@ -32,9 +32,9 @@ IN_DOCKER = os.environ.get("IN_DOCKER")
 USE_DASK = os.getenv("DASK", "True") == "True"
 NWM_TASK_COUNT = 0
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
-logger.setLevel(level=logging.INFO)
+logger.setLevel(level=logging.DEBUG)
 
 def connect_to_mongoDB(database=None):
     mongodb_host = os.getenv("MONGODB_HOST", "mongodb://localhost:27017/0")
@@ -155,11 +155,13 @@ class HMSTaskData(Resource):
     Controller class to retrieve data from the mongoDB database and/or checking status of a task
     """
     parser = parser_base.copy()
-    parser.add_argument('job_id')
+    parser.add_argument('job_id', location='args')
 
     def get(self):
+        logging.info("Request for HMS data received")
         args = self.parser.parse_args()
         task_id = args.job_id
+        logging.info(f"Searching HMS data for task ID: {task_id}")
         if task_id is not None:
             task_data = task_status(task_id=task_id)
             return Response(json.dumps(task_data))
@@ -190,7 +192,7 @@ class HMSFlaskTest(Resource):
 
 class HMSRevokeTask(Resource):
     parser = parser_base.copy()
-    parser.add_argument('task_id')
+    parser.add_argument('task_id', location='args')
 
     def get(self):
         args = self.parser.parse_args()
@@ -274,14 +276,16 @@ class NWMDownload(Resource):
     http://localhost:7777/hms/nwm/data/?dataset=streamflow&comid=6411690&startDate=2010-01-01&endDate=2010-12-31
     """
     parser = parser_base.copy()
-    parser.add_argument('dataset')
-    parser.add_argument('comid')
-    parser.add_argument('startDate')
-    parser.add_argument('endDate')
-    parser.add_argument('timestep')
+    parser.add_argument('dataset', location='args')
+    parser.add_argument('comid', location='args')
+    parser.add_argument('startDate', location='args')
+    parser.add_argument('endDate', location='args')
+    parser.add_argument('waterbody', type=str, location='args', default ='false')
 
     def get(self):
         args = self.parser.parse_args()
+
+        waterbody = args.waterbody.lower() == "true"
 
         hash = hashlib.md5(json.dumps(
             {'dataset': args.dataset, 'comids': args.comid, 'startDate': args.startDate, 'endDate': args.endDate},
@@ -293,21 +297,21 @@ class NWMDownload(Resource):
         task_id = str(uuid.uuid4())
         save_status(task_id=task_id, status="PENDING", message="nwm data download")
         dask_client = get_dask_client()
-        test_task = dask_client.submit(NWMDownload.get_data, task_id, args.dataset, args.comid, args.startDate, args.endDate,
+        # test_task = NWMDownload.get_data(task_id, args.dataset, args.comid, args.startDate, args.endDate, waterbody)
+        test_task = dask_client.submit(NWMDownload.get_data, task_id, args.dataset, args.comid, args.startDate, args.endDate, waterbody,
                                        key=task_id)
         fire_and_forget(test_task)
         return Response(json.dumps({'job_id': task_id}))
 
     @staticmethod
-    def get_data(task_id, dataset, comid, startDate, endDate):
+    def get_data(task_id, dataset, comid, startDate, endDate, waterbody):
         comids = comid.split(",")
         save_status(task_id=task_id, status="STARTED")
         logger.info(f"Starting NWM download task, ID: {task_id}")
         time0 = time.time()
         try:
-            nwm2 = os.getenv("NWM_21", "True") == "True"
-            nwm = NWM(start_date=startDate, end_date=endDate, comids=comids)
-            nwm.request_timeseries(optimize=True, nwm_21=nwm2)
+            nwm = NWM(start_date=startDate, end_date=endDate, comids=comids, waterbody=waterbody)
+            nwm.request_timeseries_parallel()
             nwm.set_output()
         except Exception as e:
             logging.warning(f"Error attempting to retrieve NWM data, ID: {task_id}, error: {e}")
@@ -326,10 +330,10 @@ class NLDASGridCells(Resource):
 
     """
     parser = parser_base.copy()
-    parser.add_argument('huc_8_num')
-    parser.add_argument('huc_12_num')
-    parser.add_argument('com_id_list')
-    parser.add_argument('grid_source')
+    parser.add_argument('huc_8_num', location='args')
+    parser.add_argument('huc_12_num', location='args')
+    parser.add_argument('com_id_list', location='args')
+    parser.add_argument('grid_source', location='args')
 
     def get(self):
         args = self.parser.parse_args()
@@ -395,8 +399,8 @@ class NWMDataShortTerm(Resource):
     NWM Data retriever
     """
     parser = parser_base.copy()
-    parser.add_argument('comid')
-    parser.add_argument('simdate')
+    parser.add_argument('comid', location='args')
+    parser.add_argument('simdate', location='args')
 
     def get(self):
         args = self.parser.parse_args()
@@ -509,7 +513,7 @@ class HMSWorkflow(Resource):
 
     class Simulation(Resource):
         sim_parser = parser_base.copy()
-        sim_parser.add_argument('sim_id', type=str)
+        sim_parser.add_argument('sim_id', type=str, location='args')
         sim_parser.add_argument('comid_input', type=dict)
         sim_parser.add_argument('network', type=dict)
         sim_parser.add_argument("simulation_dependencies", type=list)
