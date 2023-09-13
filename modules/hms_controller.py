@@ -36,7 +36,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 logger.setLevel(level=logging.INFO)
 
-
 def connect_to_mongoDB(database=None):
     mongodb_host = os.getenv("MONGODB_HOST", "mongodb://localhost:27017/0")
     if database is None:
@@ -433,6 +432,69 @@ class NWMDataShortTerm(Resource):
         save_status(task_id=task_id, status="SUCCESS", data=comid_data)
         logger.info(f"Completed NWM short term forecast data task. ID: {task_id}")
 
+
+class TimeOfTravel(Resource):
+    parser = parser_base.copy()
+    parser.add_argument('startCOMID')
+    parser.add_argument('endCOMID')
+    parser.add_argument('startDate')
+    parser.add_argument('startHour')
+    parser.add_argument('inflowSource')
+
+    def post(self):
+        TimeOfTravel.test_logging(f"timeoftravel.post request")
+
+        try:
+            args = self.parser.parse_args()
+        except Exception as e:
+            return Response(json.dumps({ "ERROR": f"failed to parse args! {e}" }))
+        
+        print(f"TimeOfTravel.post.args.comid {args.startCOMID}")
+        comid = args.startCOMID
+        if (comid is None):
+            return Response(json.dumps({'ERROR': f"comid value does not exist or is invalid! {e}"}))
+        
+        dt_input_format = "%Y-%m-%d:%H"
+        dt = args.startDate
+        if dt is None:
+            dt = datetime.now().strftime("%Y-%m-%d %H")
+        else:
+            try:
+                dt = datetime.strptime(dt, dt_input_format).strftime("%Y-%m-%d %H")
+            except Exception as e:
+                return Response(json.dumps({ "ERROR": f"failed to parse simdate! expected format {dt_input_format}, got {args.simdate}"}))
+
+        task_id = str(uuid.uuid4())
+        save_status(task_id=task_id, status="PENDING", message="NWM Short-term forecast task")
+        dask_client = get_dask_client()
+        test_task = dask_client.submit(TimeOfTravel.get_data,
+                                        task_id, comid, dt,
+                                        key=task_id)
+        fire_and_forget(test_task)
+        return Response(json.dumps({ 'job_id': task_id,
+                                    "args": args }))
+    
+    @staticmethod
+    def test_logging(message):
+        print(f"TimeOfTravel.test_logging print {message}")
+        logger.log(1, f"TimeOfTravel.test_logging log {message}")
+        logger.info(f"TimeOfTravel.test_logging info {message}")
+        logger.warning(f"TimeOfTravel.test_logging warning {message}")
+        logger.error(f"TimeOfTravel.test_logging error {message}")
+        logger.critical(f"TimeOfTravel.test_logging critical {message}")
+
+    @staticmethod
+    def get_data(task_id, comid, dt):
+        logger.info(f"Started Time of Travel NWM short term forecast data task. ID: {task_id}")
+        save_status(task_id=task_id, status="STARTED")
+        nwm = NWMForecastData(dt=dt)
+        nwm.download_data()
+        comid_data = {}
+        for c in comid:
+            json_data = nwm.generate_timeseries(c)
+            comid_data[str(c)] = json_data
+        save_status(task_id=task_id, status="SUCCESS", data=comid_data)
+        logger.info(f"Completed Time of Travel NWM short term forecast data task. ID: {task_id}")
 
 class HMSWorkflow(Resource):
     """

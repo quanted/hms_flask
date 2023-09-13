@@ -59,6 +59,9 @@ api.add_resource(hms_controller.NCDCStationSearch, '/gis/ncdc/stations/')
 logging.info(base_url + "/gis/percentage/")
 api.add_resource(hms_controller.NLDASGridCells, '/gis/percentage/')
 
+logging.info(base_url + "/proxy/workflow/timeoftravel/")
+api.add_resource(hms_controller.TimeOfTravel, "/proxy/workflow/timeoftravel/")
+
 logging.info(base_url + "/proxy/<model>/")
 api.add_resource(hms_controller.ProxyDNC2, '/proxy/<path:model>/')
 
