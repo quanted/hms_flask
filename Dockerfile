@@ -18,6 +18,7 @@ ARG CONDA_ENV="base"
 
 COPY environment.yml /src/environment.yml
 RUN micromamba install -n $CONDA_ENV -f /src/environment.yml
+RUN micromamba clean -p -t -l --trash -y
 
 COPY uwsgi.ini /etc/uwsgi/
 COPY . /src/hms_flask
@@ -33,6 +34,7 @@ ENV PATH /src:/src/hms_flask/:$CONDA_ENV:$PATH
 RUN apk del gfortran
 RUN rm -R /opt/conda/pkgs/postgres*
 RUN rm -R /opt/conda/bin/postgres*
+RUN find /opt/conda/ -name 'test.key' -delete || true
 # ------------------------- #
 
 RUN chown -R $APP_USER:$APP_USER /src
