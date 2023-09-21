@@ -33,7 +33,6 @@ ENV PATH /src:/src/hms_flask/:$CONDA_ENV:$PATH
 RUN apk del gfortran
 RUN rm -R /opt/conda/pkgs/postgres*
 RUN rm -R /opt/conda/bin/postgres*
-RUN rm /home/www-data/pyenv/lib/python3.10/site-packages/tornado/test/test.key
 # ------------------------- #
 
 RUN chown -R $APP_USER:$APP_USER /src
