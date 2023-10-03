@@ -39,7 +39,7 @@ RUN find /opt/conda/ -name 'localhost.key' -delete || true
 RUN find /opt/conda/ -name 'server.pem' -delete || true
 RUN find /opt/conda/ -name 'client.pem' -delete || true
 RUN find /opt/conda/ -name 'password_protected.pem' -delete || true
-RUN micromamba remove pip --force
+RUN micromamba remove pip
 # ------------------------- #
 
 RUN chown -R $APP_USER:$APP_USER /src
