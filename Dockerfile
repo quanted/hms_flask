@@ -35,6 +35,10 @@ RUN apk del gfortran
 RUN rm -R /opt/conda/pkgs/postgres*
 RUN rm -R /opt/conda/bin/postgres*
 RUN find /opt/conda/ -name 'test.key' -delete || true
+RUN find /opt/conda/ -name 'localhost.key' -delete || true
+RUN find /opt/conda/ -name 'server.pem' -delete || true
+RUN find /opt/conda/ -name 'client.pem' -delete || true
+RUN find /opt/conda/ -name 'password_protected.pem' -delete || true
 # ------------------------- #
 
 RUN chown -R $APP_USER:$APP_USER /src
