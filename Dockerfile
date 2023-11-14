@@ -8,11 +8,11 @@ ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
 ENV PATH /opt/conda/bin:/opt/conda/envs/env/bin:/opt/micromamba/bin:/opt/micromamba/envs/env/bin:$PATH
 
 RUN apk add --upgrade apk-tools
-RUN apk upgrade --available
 
 RUN apk add wget bzip2 ca-certificates \
-    py3-pip py3-aiohttp make sqlite gfortran git \
-    mercurial subversion gdal geos
+    py3-pip make sqlite gfortran git \
+    mercurial subversion gdal geos \
+RUN apk upgrade --available
 
 ARG CONDA_ENV="base"
 
@@ -31,7 +31,7 @@ ENV PATH /src:/src/hms_flask/:$CONDA_ENV:$PATH
 
 # Security Issues Mitigations
 # ------------------------- #
-RUN apk del py3-pip py-pip
+#RUN apk del py3-pip
 RUN apk del gfortran
 RUN rm -R /opt/conda/pkgs/postgres*
 RUN rm -R /opt/conda/bin/postgres*
