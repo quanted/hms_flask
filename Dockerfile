@@ -31,7 +31,7 @@ ENV PATH /src:/src/hms_flask/:$CONDA_ENV:$PATH
 
 # Security Issues Mitigations
 # ------------------------- #
-RUN apk del py3-pip py-pip || true
+RUN apk del py3-pip py-pip
 RUN apk del gfortran
 RUN rm -R /opt/conda/pkgs/postgres*
 RUN rm -R /opt/conda/bin/postgres*
