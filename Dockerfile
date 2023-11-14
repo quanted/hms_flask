@@ -20,7 +20,6 @@ ARG CONDA_ENV="base"
 COPY environment.yml /src/environment.yml
 RUN micromamba install -n $CONDA_ENV -f /src/environment.yml
 RUN micromamba clean -p -t -l --trash -y
-RUN micromamba install -n $CONDA_ENV aiohttp=3.9
 
 COPY uwsgi.ini /etc/uwsgi/
 COPY . /src/hms_flask
