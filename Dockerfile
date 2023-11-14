@@ -11,7 +11,7 @@ RUN apk add --upgrade apk-tools
 
 RUN apk add wget bzip2 ca-certificates \
     py3-pip make sqlite gfortran git \
-    mercurial subversion gdal geos \
+    mercurial subversion gdal geos
 RUN apk upgrade --available
 
 ARG CONDA_ENV="base"
