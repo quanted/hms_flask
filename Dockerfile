@@ -11,9 +11,8 @@ RUN apk add --upgrade apk-tools
 RUN apk upgrade --available
 
 RUN apk add wget bzip2 ca-certificates \
-    py3-pip make sqlite gfortran git \
+    py3-pip py3-aiohttp make sqlite gfortran git \
     mercurial subversion gdal geos
-RUN pip3 install --upgrade pip
 
 ARG CONDA_ENV="base"
 
@@ -32,6 +31,7 @@ ENV PATH /src:/src/hms_flask/:$CONDA_ENV:$PATH
 
 # Security Issues Mitigations
 # ------------------------- #
+RUN apk del py3-pip py-pip || true
 RUN apk del gfortran
 RUN rm -R /opt/conda/pkgs/postgres*
 RUN rm -R /opt/conda/bin/postgres*
