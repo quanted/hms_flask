@@ -13,12 +13,14 @@ RUN apk upgrade --available
 RUN apk add wget bzip2 ca-certificates \
     py3-pip make sqlite gfortran git \
     mercurial subversion gdal geos
+RUN pip -m pip install --upgrade pip
 
 ARG CONDA_ENV="base"
 
 COPY environment.yml /src/environment.yml
 RUN micromamba install -n $CONDA_ENV -f /src/environment.yml
 RUN micromamba clean -p -t -l --trash -y
+RUN micromamba install -n $CONDA_ENV aiohttp=3.9
 
 COPY uwsgi.ini /etc/uwsgi/
 COPY . /src/hms_flask
