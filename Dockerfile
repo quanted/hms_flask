@@ -31,7 +31,15 @@ ENV PATH /src:/src/hms_flask/:$CONDA_ENV:$PATH
 
 # Security Issues Mitigations
 # ------------------------- #
-#RUN apk del py3-pip
+# Removes all pips from image to "resolve" open Prisma CVE:
+# (NOTE: No very sustainable, will break with higher version of Python.)
+RUN rm -rf \
+    /home/www-data/pyenv/lib/python3.10/site-packages/pip* \
+    /home/www-data/pyenv/bin/pip \
+    /opt/conda/lib/python3.10/site-packages/pip* \
+    /opt/conda/bin/pip \
+    /root/.cache/pip
+
 RUN apk del gfortran
 RUN rm -R /opt/conda/pkgs/postgres*
 RUN rm -R /opt/conda/bin/postgres*
