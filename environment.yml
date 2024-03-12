@@ -6,8 +6,8 @@ dependencies:
   - python=3.10
   - boto3=1.28.50
   - click=8.1.7
-  - dask=2023.9.2
-  - distributed=2023.9.2
+  - dask=2024.2.1
+  - distributed=2024.2.1
   - fiona=1.9.4
   - flask=2.3.3
   - flask-restful=0.3.10
@@ -18,7 +18,7 @@ dependencies:
   - requests=2.31.0
   - s3fs
   - shapely=2.0.1
-  - xarray=2023.8.0
+  - xarray=2024.2.0
   - zarr=2.16.1
   - uwsgi
   - gdal
