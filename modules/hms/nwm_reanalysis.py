@@ -211,6 +211,8 @@ class NWM:
         for idx, catchment in timeseries.groupby("feature_id"):
             i_meta = True
             for date, row in catchment.iterrows():
+                if type(date) == int:
+                    print(date)
                 d = date[0].strftime('%Y-%m-%d %H')
                 if first:
                     self.output.data[d] = [r for r in row[vars]]
@@ -222,7 +224,7 @@ class NWM:
                         self.output.metadata[f"column_{i}"] = f"{v}-{idx}"
                         i += 1
                     i_meta = False
-            first = False
+                first = False
         if self.waterbody:
             self.output.metadata[f"column_{i-1}_units"] = "m3"
 
