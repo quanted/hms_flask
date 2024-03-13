@@ -23,8 +23,11 @@ import multiprocessing as mp
 
 warnings.filterwarnings("ignore", category=ResourceWarning)
 logging.getLogger('boto3').setLevel(logging.CRITICAL)
-boto3.set_stream_logger('botocore', logging.INFO)
-boto3.set_stream_logger('s3fs', logging.INFO)
+logging.getLogger('botocore').setLevel(logging.CRITICAL)
+logging.getLogger('s3fs').setLevel(logging.CRITICAL)
+logging.getLogger('nose').setLevel(logging.CRITICAL)
+# boto3.set_stream_logger('botocore', logging.INFO)
+# boto3.set_stream_logger('s3fs', logging.INFO)
 
 epa_waters_url = "https://watersgeo.epa.gov/arcgis/rest/services/NHDPlus_NP21/Catchments_NP21_Simplified/MapServer/0/query?"
 nwm_url = "s3://noaa-nwm-retro-v2-zarr-pds"
@@ -207,13 +210,12 @@ class NWM:
             vars.append("volume")
             lake_data = self._load_lakeparm()
             timeseries["volume"] = (float(lake_data["LkArea"]) * 1000000.0) * (timeseries["water_sfc_elev"] - float(lake_data["OrificeE"]))
-
+        logging.info(timeseries.describe())
         for idx, catchment in timeseries.groupby("feature_id"):
             i_meta = True
             for date, row in catchment.iterrows():
-                if type(date) == int:
-                    print(date)
                 d = date[0].strftime('%Y-%m-%d %H')
+                self.output.data[d] = []
                 if first:
                     self.output.data[d] = [r for r in row[vars]]
                 else:
