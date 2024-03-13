@@ -306,7 +306,7 @@ class NWMDownload(Resource):
 
     @staticmethod
     def get_data(task_id, dataset, comid, startDate, endDate, waterbody):
-        comids = comid.split(",")
+        comids = comid.split(",") if isinstance(comid, str) else [int(comid)]
         save_status(task_id=task_id, status="STARTED")
         logger.info(f"Starting NWM download task, ID: {task_id}")
         time0 = time.time()

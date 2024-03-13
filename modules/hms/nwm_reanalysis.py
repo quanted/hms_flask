@@ -229,7 +229,7 @@ class NWM:
                         self.output.metadata[f"column_{i}"] = f"{v}-{idx}"
                         i += 1
                     i_meta = False
-                first = False
+            first = False
         if self.waterbody:
             self.output.metadata[f"column_{i-1}_units"] = "m3"
 
