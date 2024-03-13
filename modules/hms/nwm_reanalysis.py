@@ -213,7 +213,7 @@ class NWM:
         for idx, catchment in timeseries.groupby("feature_id"):
             i_meta = True
             for date, row in catchment.iterrows():
-                if isinstance(date, int):
+                if isinstance(date[0], int):
                     logger.warn(f"Invalid date encounters: {date}, catchment: {len(catchment)}, idx: {idx}")
                     continue
                 d = date[0].strftime('%Y-%m-%d %H')
