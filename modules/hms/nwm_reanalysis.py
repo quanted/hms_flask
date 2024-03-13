@@ -213,10 +213,10 @@ class NWM:
         for idx, catchment in timeseries.groupby("feature_id"):
             i_meta = True
             for date, row in catchment.iterrows():
+                date_index = 0
                 if isinstance(date[0], int):
-                    logger.warn(f"Invalid date encounters: {date}, catchment: {len(catchment)}, idx: {idx}")
-                    continue
-                d = date[0].strftime('%Y-%m-%d %H')
+                    date_index = 1
+                d = date[date_index].strftime('%Y-%m-%d %H')
                 if first:
                     self.output.data[d] = [r for r in row[vars]]
                 else:
