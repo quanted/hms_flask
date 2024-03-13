@@ -26,8 +26,8 @@ logging.getLogger('boto3').setLevel(logging.CRITICAL)
 logging.getLogger('botocore').setLevel(logging.CRITICAL)
 logging.getLogger('s3fs').setLevel(logging.CRITICAL)
 logging.getLogger('nose').setLevel(logging.CRITICAL)
-# boto3.set_stream_logger('botocore', logging.INFO)
-# boto3.set_stream_logger('s3fs', logging.INFO)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 epa_waters_url = "https://watersgeo.epa.gov/arcgis/rest/services/NHDPlus_NP21/Catchments_NP21_Simplified/MapServer/0/query?"
 nwm_url = "s3://noaa-nwm-retro-v2-zarr-pds"
@@ -88,11 +88,11 @@ class NWM:
         request_variables = copy.copy(variables)
 
         if self.waterbody:
-            logging.info("Requesting NWM waterbody data")
+            logger.info("Requesting NWM waterbody data")
             request_url = nwm_21_wb_url
             request_variables = copy.copy(wb_variables)
-        logging.info(f"Using NWM 2.1 URL: {request_url}")
-        logging.info(f"Request data for COMIDS: {self.comids}")
+        logger.info(f"Using NWM 2.1 URL: {request_url}")
+        logger.info(f"Request data for COMIDS: {self.comids}")
         s3 = s3fs.S3FileSystem(anon=True)
         store = s3fs.S3Map(root=request_url, s3=s3, check=False)
 
@@ -119,10 +119,10 @@ class NWM:
 
         request_url = nwm_21_url
         request_variables = copy.copy(variables)
-        logging.info(f"NWM request start date: {self.start_date}, end date: {self.end_date}")
+        logger.info(f"NWM request start date: {self.start_date}, end date: {self.end_date}")
 
         if self.waterbody:
-            logging.info("Requesting NWM waterbody data")
+            logger.info("Requesting NWM waterbody data")
             request_url = nwm_21_wb_url
             request_variables = copy.copy(wb_variables)
             request_inputs = [[copy.copy(self.start_date), copy.copy(self.end_date), request_variables, request_url]]
@@ -132,7 +132,7 @@ class NWM:
             i_date = copy.copy(self.start_date)
             j_date = copy.copy(self.start_date) + datetime.timedelta(days=self.n_days)
             e_date = copy.copy(j_date)
-            logging.info(f"Request Variables: {request_variables}")
+            logger.info(f"Request Variables: {request_variables}")
             while e_date < self.end_date or initial:
                 initial = False
                 if j_date >= self.end_date:
@@ -143,8 +143,8 @@ class NWM:
                 i_date = copy.copy(j_date)
                 j_date = copy.copy(e_date) + datetime.timedelta(days=self.n_days)
 
-        logging.info(f"Using NWM 2.1 URL: {request_url}")
-        logging.info(f"Request data for COMIDS: {self.comids}, Request Blocks: {len(request_inputs)}")
+        logger.info(f"Using NWM 2.1 URL: {request_url}")
+        logger.info(f"Request data for COMIDS: {self.comids}, Request Blocks: {len(request_inputs)}")
         # cpu_count = os.getenv('PARALLEL_PROCESSES', mp.cpu_count())
         # cpu_count = cpu_count if cpu_count <= len(request_inputs) else len(request_inputs)
         # cpu_count = 4
@@ -152,7 +152,7 @@ class NWM:
         data_results = []
         for r_inputs in request_inputs:
             data_results.append(self.request_timeseries_i(*r_inputs))
-        logging.info(f"Completed NWM requests, n: {len(data_results)}")
+        logger.info(f"Completed NWM requests, n: {len(data_results)}")
         # data_results = pool.starmap_async(self.request_timeseries_i, request_inputs).get()
         # pool.close()
         # pool.join()
@@ -170,7 +170,7 @@ class NWM:
         store = s3fs.S3Map(root=request_url, s3=s3, check=False)
 
         ds = xr.open_zarr(store=store, consolidated=True)
-        logging.info(f"Request for NWM data, COMIDS: {self.comids}, Start Date: {start_date}, End Date: {end_date}, Request Variables: {request_variables}")
+        logger.info(f"Request for NWM data, COMIDS: {self.comids}, Start Date: {start_date}, End Date: {end_date}, Request Variables: {request_variables}")
         with dask.config.set(**{'array.slicing.split_large_chunks': True}):
             ds_streamflow = ds[request_variables].sel(feature_id=self.comids).sel(time=slice(
                 f"{start_date.year}-{start_date.month}-{start_date.day}",
@@ -210,15 +210,10 @@ class NWM:
             vars.append("volume")
             lake_data = self._load_lakeparm()
             timeseries["volume"] = (float(lake_data["LkArea"]) * 1000000.0) * (timeseries["water_sfc_elev"] - float(lake_data["OrificeE"]))
-        logging.info(timeseries.describe())
         for idx, catchment in timeseries.groupby("feature_id"):
             i_meta = True
             for date, row in catchment.iterrows():
-                if isinstance(date[0], int):
-                    d = date[0]
-                else:
-                    d = date[0].strftime('%Y-%m-%d %H')
-                self.output.data[d] = []
+                d = date[0].strftime('%Y-%m-%d %H')
                 if first:
                     self.output.data[d] = [r for r in row[vars]]
                 else:
@@ -237,9 +232,10 @@ class NWM:
 if __name__ == "__main__":
     import time
 
-    start_date = "2015-01-01"
-    end_date = "2015-12-31"
-    comids = [2043493]
+    start_date = "2010-01-01"
+    end_date = "2011-01-01"
+    comids = [13890718]
+    # comids = [2043493]
     # comids = [6277975, 6278087]
     # comids = [6277975, 6278087]
 
@@ -256,5 +252,7 @@ if __name__ == "__main__":
     t2 = time.time()
     print(f"Set output time: {round(t2-t1, 4)} sec")
     print(f"Total Runtime: {round(t2-t0, 4)/60} min(s)")
-
+    test_file = "test-nwm-output.json"
+    with open(test_file, 'w') as output_file:
+        output_file.write(json.dumps(nwm.output.to_dict()))
 # (4, 10, opt: True nwm_2: True) = 3.84757 min
