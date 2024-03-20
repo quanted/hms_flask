@@ -1,4 +1,4 @@
-FROM mambaorg/micromamba:1.5.1-alpine
+FROM mambaorg/micromamba:1.5.7-alpine3.18
 
 USER root
 ARG APP_USER="hms"
