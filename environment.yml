@@ -20,6 +20,5 @@ dependencies:
   - shapely=2.0.6
   - xarray=2024.2.0
   - zarr=2.16.1
-#  - urllib3=2.2.2
   - uwsgi
   - gdal

@@ -32,6 +32,7 @@ ENV PYTHONPATH=/src:/src/hms_flask/:$CONDA_ENV:$PYTHONPATH
 ENV PATH=/src:/src/hms_flask/:$CONDA_ENV:$PATH
 
 RUN python3 -m pip install --upgrade pip
+RUN python3 -m pip install urllib3==2.2.2
 
 RUN apk del gfortran
 RUN apk del wget
