@@ -34,6 +34,7 @@ ENV PATH=/src:/src/hms_flask/:$CONDA_ENV:$PATH
 RUN python3 -m pip install --upgrade pip
 
 RUN apk del gfortran
+RUN apk del wget
 RUN rm -R /opt/conda/pkgs/postgres*
 RUN rm -R /opt/conda/bin/postgres*
 RUN find /opt/conda/ -name 'test.key' -delete || true
