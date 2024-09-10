@@ -46,5 +46,5 @@ RUN find /opt/conda/ -name 'password_protected.pem' -delete || true
 RUN chown -R $APP_USER:$APP_USER /src
 USER $APP_USER
 
-ENTRYPOINT ["tail", "-f", "/dev/null"]
-#CMD ["sh", "/src/hms_flask/start_flask.sh"]
+#ENTRYPOINT ["tail", "-f", "/dev/null"]
+CMD ["sh", "/src/hms_flask/start_flask.sh"]

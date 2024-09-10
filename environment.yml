@@ -8,16 +8,16 @@ dependencies:
   - click=8.1.7
   - dask=2024.2.1
   - distributed=2024.2.1
-  - fiona=1.9.4
+  - fiona=1.10.0
   - flask=2.3.3
   - flask-restful=0.3.10
-  - geopandas=0.14.0
+  - geopandas=1.0.1
   - netcdf4=1.6.4
   - pymongo=4.8.0
   - pyshp=2.3.1
   - requests=2.32.3
   - s3fs
-  - shapely=2.0.1
+  - shapely=2.0.6
   - xarray=2024.2.0
   - zarr=2.16.1
 #  - urllib3=2.2.2
