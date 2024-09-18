@@ -47,9 +47,12 @@ logging.info(" flask_hms started: live endpoints")
 logging.info(base_url + "/gis")
 api.add_resource(hms_controller.HMSFlaskTest, '/gis/test/')
 
+logging.info(base_url + "/gis/tz")
+api.add_resource(hms_controller.HMSGetTZ, '/gis/tz/')
+
 # HMS endpoints
 # Data retrieval endpoint
-api.add_resource(hms_controller.HMSTaskData, '/data')
+api.add_resource(hms_controller.HMSTaskData, '/datas')
 
 logging.info(base_url + "/task/revoke/")
 api.add_resource(hms_controller.HMSRevokeTask, '/task/revoke/')

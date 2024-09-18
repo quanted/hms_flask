@@ -25,6 +25,7 @@ from .hms.hydrodynamics import FlowRouting
 from .hms.nwm_reanalysis import NWM
 from .hms.nwm_data import NWMData
 from .hms.nwm_forecast import NWMForecastData
+from .hms.locate_timezone import get_timezone
 from .hms.workflow_manager import WorkflowManager, MongoWorkflow
 
 
@@ -189,6 +190,21 @@ class HMSFlaskTest(Resource):
         data = {"request_time": str(time_stamp)}
         save_status(task_id=task_id, status="SUCCESS", data=data)
         logger.info("Completed test task on Dask, ID: {task_id}")
+
+
+class HMSGetTZ(Resource):
+    parser = parser_base.copy()
+    parser.add_argument('latitude')
+    parser.add_argument('longitude')
+
+    def get(self):
+        t0 = time.time()
+        args = self.parser.parse_args()
+        logger.info(f"Getting tz info for ({args.latitude}, {args.longitude})")
+        results = get_timezone(args.latitude, args.longitude)
+        t1 = time.time()
+        logging.info(f"TZ info: {results}, runtime: {round(t1-t0, 4)} sec")
+        return Response(json.dumps(results))
 
 
 class HMSRevokeTask(Resource):
