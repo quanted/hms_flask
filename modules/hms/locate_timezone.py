@@ -7,8 +7,10 @@ import os
 import json
 import geopandas as gp
 import pandas as pd
+import logging
 from shapely.geometry import Point
 
+logger = logging.getLogger(__name__)
 
 if os.path.exists(r"/src/hms_flask/modules/hms/tz_files/tz_world.dbf"):
     tz_df = pd.read_csv(r"/src/hms_flask/modules/hms/tz_files/tz_world.dbf", names=("TZID", "TZName", "TZOffset", "TZOffsetDST"))
@@ -30,4 +32,5 @@ def get_timezone(latitude, longitude):
     tz_name = gdf['TZID'].values[0]
     tz_offset = tz_df[tz_df["TZName"] == tz_name]["TZOffset"].values[0].split(":")[0]
     timezone_details = {"latitude": float(latitude), "longitude": float(longitude), "tzName": str(tz_name), "tzOffset": int(tz_offset)}
+    logger.info(f"Timezone details: {timezone_details}")
     return timezone_details
