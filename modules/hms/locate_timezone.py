@@ -10,10 +10,16 @@ import pandas as pd
 from shapely.geometry import Point
 
 
-tz_files = os.path.join(os.path.realpath(__file__), "..", "tz_files", "tz_world.dbf")
-tz_list = os.path.join(os.path.realpath(__file__), "..", "tz_files", "tzinfo_updated.csv")
-tz_df = pd.read_csv(tz_list, names=("TZID", "TZName", "TZOffset", "TZOffsetDST"))
-tz_gdf = gp.read_file(tz_files)
+if os.path.exists(r"/src/hms_flask/modules/hms/tz_files/tz_world.dbf"):
+    tz_df = pd.read_csv(r"/src/hms_flask/modules/hms/tz_files/tz_world.dbf", names=("TZID", "TZName", "TZOffset", "TZOffsetDST"))
+else:
+    tz_list = os.path.join(os.path.realpath(__file__), "..", "tz_files", "tzinfo_updated.csv")
+    tz_df = pd.read_csv(tz_list, names=("TZID", "TZName", "TZOffset", "TZOffsetDST"))
+if os.path.exists(r"/src/hms_flask/modules/hms/tz_files/tz_world.dbf"):
+    tz_gdf = gp.read_file(r"/src/hms_flask/modules/hms/tz_files/tz_world.dbf")
+else:
+    tz_files = os.path.join(os.path.realpath(__file__), "..", "tz_files", "tz_world.dbf")
+    tz_gdf = gp.read_file(tz_files)
 
 
 def get_timezone(latitude, longitude):
