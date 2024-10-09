@@ -174,7 +174,7 @@ class HMSTaskData(Resource):
 class HMSFlaskTest(Resource):
 
     def get(self):
-        task_id = uuid.uuid4()
+        task_id = str(uuid.uuid4())
         save_status(task_id=task_id, status="PENDING", message="Flask-Dask Test")
         dask_client = get_dask_client()
         test_task = dask_client.submit(HMSFlaskTest.run_test, task_id, key=task_id)
