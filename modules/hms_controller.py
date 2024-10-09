@@ -204,7 +204,7 @@ class HMSGetTZ(Resource):
         results = get_timezone(args.latitude, args.longitude)
         t1 = time.time()
         logging.info(f"TZ info: {results}, runtime: {round(t1-t0, 4)} sec")
-        return Response(json.dumps(results))
+        return Response(json.dumps(results), content_type="application/json")
 
 
 class HMSRevokeTask(Resource):
