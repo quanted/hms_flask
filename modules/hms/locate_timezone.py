@@ -11,6 +11,7 @@ import logging
 from shapely.geometry import Point
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 tz_df = None
 tz_list = None

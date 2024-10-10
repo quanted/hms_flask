@@ -203,7 +203,7 @@ class HMSGetTZ(Resource):
         logging.info(f"Getting tz info for ({args.latitude}, {args.longitude})")
         if args.latitude is None or args.longitude is None:
             return Response(json.dumps({"error": "Latitude and Longitude are required."}))
-        results = get_timezone(args.latitude, args.longitude)
+        results = get_timezone(float(args.latitude), float(args.longitude))
         t1 = time.time()
         logging.info(f"TZ info: {results}, runtime: {round(t1-t0, 4)} sec")
         return Response(json.dumps(results))
