@@ -1,6 +1,6 @@
 import io
 
-from flask import Response, send_file
+from flask import Response, send_file, jsonify, make_response
 from flask_restful import Resource, reqparse, request, Api
 import pymongo as pymongo
 from datetime import datetime
@@ -194,17 +194,19 @@ class HMSFlaskTest(Resource):
 
 class HMSGetTZ(Resource):
     parser = parser_base.copy()
-    parser.add_argument('latitude')
-    parser.add_argument('longitude')
+    parser.add_argument('latitude', location='args')
+    parser.add_argument('longitude', location='args')
 
     def get(self):
         t0 = time.time()
         args = self.parser.parse_args()
         logger.info(f"Getting tz info for ({args.latitude}, {args.longitude})")
+        if args.latitude is None or args.longitude is None:
+            return Response(json.dumps({"error": "Latitude and Longitude are required."}))
         results = get_timezone(args.latitude, args.longitude)
         t1 = time.time()
         logging.info(f"TZ info: {results}, runtime: {round(t1-t0, 4)} sec")
-        return Response(results, content_type="application/json")
+        return Response(json.dumps(results))
 
 
 class HMSRevokeTask(Resource):
@@ -297,7 +299,7 @@ class NWMDownload(Resource):
     parser.add_argument('comid', location='args')
     parser.add_argument('startDate', location='args')
     parser.add_argument('endDate', location='args')
-    parser.add_argument('waterbody', type=str, location='args', default ='false')
+    parser.add_argument('waterbody', type=str, location='args', default='false')
 
     def get(self):
         args = self.parser.parse_args()

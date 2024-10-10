@@ -1,10 +1,11 @@
-from flask import Flask
+from flask import Flask, make_response, request
 from flask_restful import Api, Resource
 import os
 import logging
 
 # Import modules
 from hms_flask.modules import hms_controller, hms_data
+from hms_flask.modules.hms.locate_timezone import get_timezone
 
 from logging.config import dictConfig
 
@@ -24,10 +25,12 @@ dictConfig({
     }
 })
 
+
 app = Flask(__name__)
 app.config.update(
     DEBUG=True
 )
+
 api = Api(app)
 
 PROJECT_ROOT = os.path.abspath(os.path.dirname(__file__))
@@ -52,7 +55,7 @@ api.add_resource(hms_controller.HMSGetTZ, '/gis/tz/')
 
 # HMS endpoints
 # Data retrieval endpoint
-api.add_resource(hms_controller.HMSTaskData, '/datas')
+api.add_resource(hms_controller.HMSTaskData, '/data')
 
 logging.info(base_url + "/task/revoke/")
 api.add_resource(hms_controller.HMSRevokeTask, '/task/revoke/')

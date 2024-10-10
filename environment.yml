@@ -1,4 +1,4 @@
-name: base
+name: hms_kube2
 channels:
   - conda-forge
   - defaults
@@ -9,7 +9,8 @@ dependencies:
   - dask=2024.2.1
   - distributed=2024.2.1
   - fiona=1.10.0
-  - flask=2.3.3
+  - flask=3.0.3
+  - flask-cors=5.0.0
   - flask-restful=0.3.10
   - geopandas=1.0.1
   - netcdf4=1.6.4
