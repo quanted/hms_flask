@@ -200,7 +200,7 @@ class HMSGetTZ(Resource):
     def get(self):
         t0 = time.time()
         args = self.parser.parse_args()
-        logger.info(f"Getting tz info for ({args.latitude}, {args.longitude})")
+        logging.info(f"Getting tz info for ({args.latitude}, {args.longitude})")
         if args.latitude is None or args.longitude is None:
             return Response(json.dumps({"error": "Latitude and Longitude are required."}))
         results = get_timezone(args.latitude, args.longitude)

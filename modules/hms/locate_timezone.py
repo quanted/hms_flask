@@ -12,6 +12,8 @@ from shapely.geometry import Point
 
 logger = logging.getLogger(__name__)
 
+tz_df = None
+tz_list = None
 if os.path.exists(r"/src/hms_flask/modules/hms/tz_files/tz_world.dbf"):
     tz_df = pd.read_csv(r"/src/hms_flask/modules/hms/tz_files/tz_world.dbf", names=("TZID", "TZName", "TZOffset", "TZOffsetDST"))
 else:
@@ -25,6 +27,8 @@ else:
 
 
 def get_timezone(latitude, longitude):
+    logger.info("TZ_DF: " + str(tz_df))
+    logger.info("TZ_LIST: " + str(tz_list))
     tz_point = Point(float(longitude), float(latitude))
     gdf = tz_gdf[tz_gdf.contains(tz_point)]
     if gdf.empty:
