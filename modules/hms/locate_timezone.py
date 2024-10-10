@@ -15,7 +15,7 @@ logger.setLevel(logging.DEBUG)
 
 tz_df = None
 if os.path.exists(r"/src/hms_flask/modules/hms/tz_files/tzinfo_updated.csv"):
-    tz_df = pd.read_csv(r"/src/hms_flask/modules/hms/tz_files/tz_world.dbf", names=("TZID", "TZName", "TZOffset", "TZOffsetDST"))
+    tz_df = pd.read_csv(r"/src/hms_flask/modules/hms/tz_files/tzinfo_updated.csv", names=("TZID", "TZName", "TZOffset", "TZOffsetDST"))
 else:
     tz_list = os.path.join(os.path.realpath(__file__), "..", "tz_files", "tzinfo_updated.csv")
     tz_df = pd.read_csv(tz_list, names=("TZID", "TZName", "TZOffset", "TZOffsetDST"))
@@ -27,8 +27,9 @@ else:
 
 
 def get_timezone(latitude, longitude):
-    print("TZ_DF: " + str(tz_df.shape))
-    print("TZ_dbf: " + str(tz_gdf.shape))
+    # print(f"GeoPandas Version: {gp.__version__}")
+    # print("TZ_DF expected (588, 4): " + str(tz_df.shape))
+    # print("TZ_dbf expected (27742, 2): " + str(tz_gdf.shape))
     tz_point = Point(float(longitude), float(latitude))
     gdf = tz_gdf[tz_gdf.contains(tz_point)]
     if gdf.empty:
