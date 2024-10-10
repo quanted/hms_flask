@@ -27,9 +27,6 @@ else:
 
 
 def get_timezone(latitude, longitude):
-    # print(f"GeoPandas Version: {gp.__version__}")
-    # print("TZ_DF expected (588, 4): " + str(tz_df.shape))
-    # print("TZ_dbf expected (27742, 2): " + str(tz_gdf.shape))
     tz_point = Point(float(longitude), float(latitude))
     gdf = tz_gdf[tz_gdf.contains(tz_point)]
     if gdf.empty:
