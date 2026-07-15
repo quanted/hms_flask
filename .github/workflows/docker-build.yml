@@ -75,14 +75,14 @@ jobs:
 #          labels: ${{ steps.meta.outputs.labels }}
 
 
-  trigger-parent-workflow:
-    runs-on: ubuntu-latest
+  # trigger-parent-workflow:
+  #   runs-on: ubuntu-latest
 
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          repository: quanted/hms_kube
-          token: ${{ secrets.NTA_ACTION_TOKEN }}
-      - name: Trigger hms-dask build
-        run: |
-          gh workflow run docker-build.yml --repo quanted/hms_kube
+  #   steps:
+  #     - uses: actions/checkout@v2
+  #       with:
+  #         repository: quanted/hms_kube
+  #         token: ${{ secrets.NTA_ACTION_TOKEN }}
+  #     - name: Trigger hms-dask build
+  #       run: |
+  #         gh workflow run docker-build.yml --repo quanted/hms_kube
