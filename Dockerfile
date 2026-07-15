@@ -5,7 +5,7 @@ ARG APP_USER="hms"
 RUN addgroup -S hms && adduser -S -G hms hms
 
 ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
-ENV PATH=/opt/conda/bin:/opt/conda/envs/env/bin:/opt/micromamba/bin:/opt/micromamba/envs/env/bin:$PATH
+ENV PATH=/opt/conda/bin:/opt/conda/envs/env/bin:/opt/micromamba/bin:/opt/micromamba/envs/env/bin:/usr/local/bin/micromamba:/bin/micromamba:$PATH
 
 RUN apk add --upgrade apk-tools
 
