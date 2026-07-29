@@ -16,10 +16,11 @@ RUN apk update
 RUN apk upgrade --available
 RUN apk upgrade busybox --repository=http://dl-cdn.alpinelinux.org/alpine/edge/main
 
-ARG CONDA_ENV="base"
+ARG CONDA_ENV="pyenv"
 
 COPY environment.yml /src/environment.yml
-RUN micromamba install -n $CONDA_ENV -f /src/environment.yml
+# RUN micromamba install -n $CONDA_ENV -f /src/environment.yml
+RUN micromamba create -n $CONDA_ENV -f /src/environment.yml
 RUN micromamba clean -p -t -l --trash -y
 
 COPY uwsgi.ini /etc/uwsgi/
