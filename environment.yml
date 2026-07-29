@@ -1,25 +1,25 @@
-name: hms_kube2
+name: pyenv
 channels:
-  - conda-forge
-  - defaults
+	- conda-forge
+	- defaults
 dependencies:
-  - python=3.10
-  - boto3=1.28.50
-  - click=8.1.7
-  - dask=2024.2.1
-  - distributed=2024.2.1
-  - fiona=1.10.0
-  - flask=3.0.3
-  - flask-cors=5.0.0
-  - flask-restful=0.3.10
-  - geopandas=1.0.1
-  - netcdf4=1.6.4
-  - pymongo=4.8.0
-  - pyshp=2.3.1
-  - requests=2.32.3
-  - s3fs
-  - shapely=2.0.6
-  - xarray=2024.2.0
-  - zarr=2.16.1
-  - uwsgi
-  - gdal
+	- python=3.10
+	- boto3=1.28.50
+	- click=8.1.7
+	- dask=2024.2.1
+	- distributed=2024.2.1
+	- fiona=1.10.0
+	- flask=3.0.3
+	- flask-cors=5.0.0
+	- flask-restful=0.3.10
+	- geopandas=1.0.1
+	- netcdf4=1.6.4
+	- pymongo=4.8.0
+	- pyshp=2.3.1
+	- requests=2.32.3
+	- s3fs
+	- shapely=2.0.6
+	- xarray=2024.2.0
+	- zarr=2.16.1
+	- uwsgi
+	- gdal

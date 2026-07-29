@@ -1,3 +1,3 @@
 #!/bin/bash
 
-exec uwsgi /etc/uwsgi/uwsgi.ini
+exec micromamba run -n pyenv uwsgi /etc/uwsgi/uwsgi.ini
