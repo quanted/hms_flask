@@ -32,13 +32,13 @@ EXPOSE 8080
 ENV PYTHONPATH=/src:/src/hms_flask/:$CONDA_ENV:$PYTHONPATH
 ENV PATH=/src:/src/hms_flask/:$CONDA_ENV:$PATH
 
-RUN python3 -m pip install --upgrade pip
-RUN python3 -m pip install urllib3==2.2.2
+# RUN python3 -m pip install --upgrade pip
+# RUN python3 -m pip install urllib3==2.2.2
 
 RUN apk del gfortran
 RUN apk del wget
-RUN rm -R /opt/conda/pkgs/postgres*
-RUN rm -R /opt/conda/bin/postgres*
+# RUN rm -R /opt/conda/pkgs/postgres*
+# RUN rm -R /opt/conda/bin/postgres*
 RUN find /opt/conda/ -name 'test.key' -delete || true
 RUN find /opt/conda/ -name 'localhost.key' -delete || true
 RUN find /opt/conda/ -name 'server.pem' -delete || true
